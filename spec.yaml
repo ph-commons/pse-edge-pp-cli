@@ -1,0 +1,305 @@
+# pse-edge internal spec — hand-authored 2026-07-27 from live-verified endpoints.
+# All endpoints replay over plain HTTP (verified with curl, no browser transport,
+# no cookies). Auth: none exists anywhere on this API surface.
+# cache: intentionally NOT enabled — freshness for this domain is trading-calendar
+# aware (weekends/holidays are legitimate non-fresh states); the hand-coded `stale`
+# novel command owns freshness, and generic wall-clock cache refresh would misfire.
+name: pse-edge
+description: "Philippine Stock Exchange data — EOD quotes, PSEi and breadth, per-ticker history, disclosures, and 17-Q financials with as-of discipline"
+version: "0.1.0"
+base_url: "https://edge.pse.com.ph"
+health_check_path: "/"
+category: commerce
+
+auth:
+  type: none
+
+config:
+  format: toml
+  path: "~/.config/github.com/ngpestelos/pse-edge-pp-cli/config.toml"
+
+learn:
+  # No ticker_patterns: PSE symbols (AT, AB, HOME, NOW) collide with common
+  # English words; free-text ticker recognition would misfire. Symbol resolution
+  # is the registry's job (resolve command), not the learn loop's.
+  synonyms:
+    "the index": "psei"
+    "composite": "psei"
+    "advancers": "advances"
+    "decliners": "declines"
+    "quarterly report": "17-q"
+    "annual report": "17-a"
+  entity_lookup_seeds:
+    index:
+      - canonical: PSEi
+        aliases: [psei index, composite index, pse composite]
+      - canonical: All Shares
+        aliases: [all shares index]
+    disclosure_template:
+      - canonical: Quarterly Report
+        aliases: [17-q, quarterly]
+      - canonical: Annual Report
+        aliases: [17-a, annual]
+      - canonical: Material Information/Transactions
+        aliases: [material information, matinfo]
+      - canonical: Clarification of News Reports
+        aliases: [clarification]
+      - canonical: Declaration of Cash Dividends
+        aliases: [cash dividend, dividends]
+
+resources:
+  companies:
+    description: "Listed-company registry: directory, lookup, and profiles"
+    endpoints:
+      directory:
+        method: GET
+        path: "/companyDirectory/search.ax"
+        description: "One page of the full listed-company directory (name, symbol, cmpy_id, security_id)"
+        example: "  pse-edge-pp-cli companies directory --page 1"
+        happy_args: "--page=1"
+        params:
+          - name: pageNo
+            flag_name: page
+            type: int
+            default: 1
+            description: "Directory page number (about 50 companies per page)"
+        response_format: html
+        html_extract:
+          mode: page
+      lookup:
+        method: GET
+        path: "/autoComplete/searchCompanyNameSymbol.ax"
+        description: "Search companies by name or symbol prefix (first 20 alphabetical matches only — use exact-match filtering)"
+        example: "  pse-edge-pp-cli companies lookup --query GTCAP"
+        happy_args: "--query=GTCAP"
+        params:
+          - name: term
+            flag_name: query
+            type: string
+            required: true
+            description: "Company name or ticker symbol prefix"
+        response:
+          type: array
+          item: CompanyMatch
+      profile:
+        method: GET
+        path: "/companyInformation/form.do"
+        description: "Company profile page: sector, subsector, incorporation, auditor"
+        example: "  pse-edge-pp-cli companies profile --company-id 633 --security-id 628"
+        happy_args: "--company-id=633;--security-id=628"
+        params:
+          - name: cmpy_id
+            flag_name: company-id
+            type: int
+            required: true
+            description: "PSE Edge company ID (from resolve or the directory)"
+          - name: security_id
+            flag_name: security-id
+            type: int
+            description: "Security ID for multi-class listings (from the directory)"
+        response_format: html
+        html_extract:
+          mode: page
+
+  prices:
+    description: "Per-ticker prices: current session snapshot and daily history"
+    endpoints:
+      history:
+        method: POST
+        path: "/common/DisclosureCht.ax"
+        description: "Daily OHLC and value-traded history for one security (first-party JSON)"
+        example: "  pse-edge-pp-cli prices history --company-id 34 --security-id 320 --start-date 07-01-2026 --end-date 07-27-2026"
+        happy_args: "--company-id=34;--security-id=320;--start-date=07-01-2026;--end-date=07-27-2026"
+        body:
+          - name: cmpy_id
+            flag_name: company-id
+            type: int
+            required: true
+            description: "PSE Edge company ID"
+          - name: security_id
+            flag_name: security-id
+            type: int
+            required: true
+            description: "Security ID (from the directory; required for correct series)"
+          - name: startDate
+            flag_name: start-date
+            type: string
+            required: true
+            description: "Range start, MM-DD-YYYY"
+          - name: endDate
+            flag_name: end-date
+            type: string
+            required: true
+            description: "Range end, MM-DD-YYYY"
+        response:
+          type: object
+          item: ChartData
+        response_path: chartData
+      snapshot:
+        method: GET
+        path: "/companyPage/stockData.do"
+        description: "Current-session stock data page: last price, change, OHLC, volume, value, market cap"
+        example: "  pse-edge-pp-cli prices snapshot --company-id 34"
+        happy_args: "--company-id=34"
+        params:
+          - name: cmpy_id
+            flag_name: company-id
+            type: int
+            required: true
+            description: "PSE Edge company ID"
+          - name: security_id
+            flag_name: security-id
+            type: int
+            description: "Security ID for multi-class listings (GTCAP-class companies need this)"
+        response_format: html
+        html_extract:
+          mode: page
+
+  market:
+    description: "Market-wide data: PSEi, sector indices, breadth, totals"
+    endpoints:
+      composite:
+        method: GET
+        path: "/compositeSector"
+        base_url: "https://frames.pse.com.ph"
+        description: "Composite/sector page: PSEi and sector indices, market summary (volume, value, trades, advances/declines/unchanged), embedded daily PSEi series since 2021. HTML-entity-encoded JSON uses single-encoded &quot; — decode before parsing. Page is ~1.5MB."
+        example: "  pse-edge-pp-cli market composite"
+        response_format: html
+        html_extract:
+          mode: page
+
+  quotes:
+    description: "Fast EOD quotes via the community phisix JSON mirror (unofficial redeploy — may vanish; edge endpoints are the first-party fallback)"
+    base_url: "https://phisix-api3.appspot.com"
+    endpoints:
+      get:
+        method: GET
+        path: "/stocks/{symbol}.json"
+        description: "EOD quote for one ticker: close, percent change, volume. as_of is a synthetic midnight stamp — it carries no trade-time information; derive the trading date from the session calendar."
+        example: "  pse-edge-pp-cli quotes get AT"
+        happy_args: "symbol=AT"
+        params:
+          - name: symbol
+            type: string
+            required: true
+            positional: true
+            description: "Ticker symbol, exact match (e.g. AT, GTCAP)"
+        response:
+          type: object
+          item: PhisixQuote
+
+  disclosures:
+    description: "Corporate disclosures: search, view, and read filing documents"
+    endpoints:
+      search:
+        method: POST
+        path: "/announcements/search.ax"
+        description: "Search disclosures by company, template, and date range (server-side; the keyword parameter is IGNORED upstream — use the filings command for client-side keyword filtering). Upstream expects a form-urlencoded body, not JSON."
+        example: "  pse-edge-pp-cli disclosures search --company-id 633 --from-date 01-01-2026 --to-date 07-27-2026"
+        happy_args: "--company-id=633;--from-date=01-01-2026;--to-date=07-27-2026"
+        body:
+          - name: companyId
+            flag_name: company-id
+            type: string
+            description: "PSE Edge company ID (empty searches all companies)"
+          - name: keyword
+            type: string
+            description: "Free-text keyword filter"
+          - name: tmplNm
+            flag_name: template
+            type: string
+            description: "Disclosure template name filter (e.g. Quarterly Report)"
+          - name: fromDate
+            flag_name: from-date
+            type: string
+            description: "Range start, MM-DD-YYYY"
+          - name: toDate
+            flag_name: to-date
+            type: string
+            description: "Range end, MM-DD-YYYY"
+        response_format: html
+        html_extract:
+          mode: page
+      view:
+        method: GET
+        path: "/openDiscViewer.do"
+        description: "Disclosure viewer wrapper for one filing"
+        example: "  pse-edge-pp-cli disclosures view --edge-no 6efc6496d0b3b01c64d70b69f0a3140b"
+        happy_args: "--edge-no=6efc6496d0b3b01c64d70b69f0a3140b"
+        params:
+          - name: edge_no
+            flag_name: edge-no
+            type: string
+            required: true
+            description: "Disclosure hash from search results"
+        response_format: html
+        html_extract:
+          mode: page
+      document:
+        method: GET
+        path: "/downloadHtml.do"
+        description: "Full disclosure document content as server-rendered HTML (use this, never the broken downloadFile.do PDF path)"
+        example: "  pse-edge-pp-cli disclosures document --file-id 1948180"
+        happy_args: "--file-id=1948180"
+        params:
+          - name: file_id
+            flag_name: file-id
+            type: int
+            required: true
+            description: "Document file ID from the disclosure viewer"
+        response_format: html
+        html_extract:
+          mode: page
+
+  financials:
+    description: "17-Q/17-A financial summary tables (annual + quarterly)"
+    endpoints:
+      report:
+        method: GET
+        path: "/companyPage/financial_reports_view.do"
+        description: "Balance-sheet and income-statement summary tables for a company (server-rendered HTML; authoritative when the PDF download is broken)"
+        example: "  pse-edge-pp-cli financials report --company-id 633"
+        happy_args: "--company-id=633"
+        params:
+          - name: cmpy_id
+            flag_name: company-id
+            type: int
+            required: true
+            description: "PSE Edge company ID"
+        response_format: html
+        html_extract:
+          mode: page
+
+types:
+  CompanyMatch:
+    fields:
+      - name: cmpyId
+        type: string
+      - name: cmpyNm
+        type: string
+      - name: symbol
+        type: string
+      - name: etfYn
+        type: string
+  ChartData:
+    fields:
+      - name: CHART_DATE
+        type: string
+      - name: OPEN
+        type: float
+      - name: HIGH
+        type: float
+      - name: LOW
+        type: float
+      - name: CLOSE
+        type: float
+      - name: VALUE
+        type: float
+  PhisixQuote:
+    fields:
+      - name: name
+        type: string
+      - name: symbol
+        type: string
+      - name: as_of
+        type: string

@@ -1,0 +1,289 @@
+// Copyright 2026 Nestor G Pestelos Jr and contributors. Licensed under Apache-2.0. See LICENSE.
+// Hand-authored porcelain: disclosure search by ticker with a local
+// pse_disclosures index.
+//
+// Naming note: the top-level name "disclosures" is already claimed by the
+// generated resource command group (search/view/document), so per the
+// build brief this porcelain is named "filings". The generated group stays
+// untouched.
+
+// pp:data-source live
+
+package cli
+
+import (
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/spf13/cobra"
+	"github.com/ngpestelos/pse-edge-pp-cli/internal/psecal"
+	"github.com/ngpestelos/pse-edge-pp-cli/internal/pseedge"
+	"github.com/ngpestelos/pse-edge-pp-cli/internal/store"
+)
+
+// filingRow is one disclosure header row in the porcelain output.
+type filingRow struct {
+	EdgeNo      string `json:"edge_no"`
+	Symbol      string `json:"symbol,omitempty"`
+	Company     string `json:"company"`
+	Template    string `json:"template"`
+	Title       string `json:"title"`
+	DisclosedAt string `json:"disclosed_at"`
+	ViewerURL   string `json:"viewer_url"`
+	AsOf        string `json:"as_of"`
+	Stale       bool   `json:"stale"`
+	Source      string `json:"source"`
+}
+
+// filingsOut is the porcelain envelope: matched rows plus scan telemetry.
+type filingsOut struct {
+	Rows         []filingRow `json:"rows"`
+	ScannedPages int         `json:"scanned_pages"`
+	TotalPages   int         `json:"total_pages"`
+	TotalCount   int         `json:"total_count"`
+	Note         string      `json:"note,omitempty"`
+}
+
+func init() {
+	registerNovelCommand(func(root *cobra.Command, flags *rootFlags) {
+		root.AddCommand(newFilingsCmd(flags))
+	})
+}
+
+func newFilingsCmd(flags *rootFlags) *cobra.Command {
+	var dbPath string
+	var templateFlag string
+	var keywordFlag string
+	var fromDateFlag string
+	var toDateFlag string
+	var limitFlag int
+	var maxScanPages int
+	var allCompanies bool
+
+	cmd := &cobra.Command{
+		Use:   "filings [symbol]",
+		Short: "Search PSE Edge disclosures by ticker (or --all), upserting headers into the local pse_disclosures index",
+		Long: `Use this command to list a company's disclosures (17-Q/17-A, dividend
+declarations, material information, ...) by ticker symbol, or market-wide
+with --all. Do NOT use it for computed filing-deadline status
+('deadlines') or to read a filing's content ('disclosures document').
+
+The symbol resolves to a companyId via the local registry (live
+autocomplete fallback); the search POSTs announcements/search.ax
+(form-urlencoded) and pages through results. --template filters
+server-side (exact template name, e.g. "Declaration of Cash Dividends");
+--keyword is matched client-side against titles because the endpoint
+ignores its keyword parameter (verified live) — pages are scanned up to
+--max-scan-pages, and a zero-match scan that hits the cap says so in the
+output note instead of pretending the corpus is empty. Every fetched
+header is upserted into the local pse_disclosures table for offline joins
+(the 'deadlines' command reads it).`,
+		Example: `  pse-edge-pp-cli filings GTCAP --from-date 01-01-2026 --json
+  pse-edge-pp-cli filings GTCAP --template "Declaration of Cash Dividends" --json
+  pse-edge-pp-cli filings --all --limit 50 --json`,
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 && !allCompanies {
+				return cmd.Help()
+			}
+			if dryRunOK(flags) {
+				return nil
+			}
+			if len(args) > 1 {
+				return usageErr(fmt.Errorf("filings takes at most one symbol, got %d", len(args)))
+			}
+			if len(args) == 1 && allCompanies {
+				return usageErr(fmt.Errorf("pass either a symbol or --all, not both"))
+			}
+			if limitFlag <= 0 {
+				return usageErr(fmt.Errorf("invalid --limit %d: must be positive", limitFlag))
+			}
+			if maxScanPages <= 0 {
+				return usageErr(fmt.Errorf("invalid --max-scan-pages %d: must be positive", maxScanPages))
+			}
+
+			// Date window: MM-DD-YYYY, defaulting to the trailing 90 days.
+			now := time.Now().In(psecal.Manila())
+			if fromDateFlag == "" {
+				fromDateFlag = now.AddDate(0, 0, -90).Format("01-02-2006")
+			}
+			if toDateFlag == "" {
+				toDateFlag = now.Format("01-02-2006")
+			}
+			for _, d := range []struct{ flag, val string }{{"--from-date", fromDateFlag}, {"--to-date", toDateFlag}} {
+				if _, err := time.Parse("01-02-2006", d.val); err != nil {
+					return usageErr(fmt.Errorf("invalid %s %q: expected MM-DD-YYYY", d.flag, d.val))
+				}
+			}
+
+			if dbPath == "" {
+				dbPath = defaultDBPath("pse-edge-pp-cli")
+			}
+
+			search := pseedge.DisclosureSearch{
+				Template: templateFlag,
+				FromDate: fromDateFlag,
+				ToDate:   toDateFlag,
+			}
+			var reqSymbol string
+			if !allCompanies {
+				rc, err := resolvePSECompany(cmd.Context(), cmd, flags, dbPath, args[0])
+				if err != nil {
+					return err
+				}
+				reqSymbol = rc.Symbol
+				search.CompanyID = strconv.Itoa(rc.CmpyID)
+			}
+
+			keyword := strings.ToLower(strings.TrimSpace(keywordFlag))
+			hc := &http.Client{}
+			out := filingsOut{Rows: make([]filingRow, 0, limitFlag)}
+			lastCompleted := psecal.LastCompletedTradingDay(time.Now()).Format("2006-01-02")
+			var fetched []pseedge.Disclosure
+
+			for pageNo := 1; ; pageNo++ {
+				reqCtx, cancel := boundCtx(cmd.Context(), flags)
+				page, err := pseedge.FetchDisclosurePage(reqCtx, hc, search, pageNo)
+				cancel()
+				if err != nil {
+					return apiErr(err)
+				}
+				out.ScannedPages++
+				out.TotalPages = page.TotalPages
+				out.TotalCount = page.TotalCount
+				fetched = append(fetched, page.Rows...)
+
+				for _, d := range page.Rows {
+					if len(out.Rows) >= limitFlag {
+						break
+					}
+					if keyword != "" && !strings.Contains(strings.ToLower(d.Title), keyword) {
+						continue
+					}
+					// DisclosedAt is RFC3339 or "" (never a raw page string),
+					// but guard the slice's shape anyway before date-slicing.
+					asOf := lastCompleted
+					if len(d.DisclosedAt) >= 10 {
+						if _, err := time.Parse("2006-01-02", d.DisclosedAt[:10]); err == nil {
+							asOf = d.DisclosedAt[:10]
+						}
+					}
+					out.Rows = append(out.Rows, filingRow{
+						EdgeNo:      d.EdgeNo,
+						Symbol:      reqSymbol,
+						Company:     d.Company,
+						Template:    d.Template,
+						Title:       d.Title,
+						DisclosedAt: d.DisclosedAt,
+						ViewerURL:   pseedge.ViewerURL(d.EdgeNo),
+						AsOf:        asOf,
+						Stale:       false,
+						Source:      "edge",
+					})
+				}
+				if len(out.Rows) >= limitFlag || pageNo >= page.TotalPages || out.ScannedPages >= maxScanPages {
+					break
+				}
+			}
+
+			switch {
+			case len(out.Rows) == 0 && out.ScannedPages < out.TotalPages:
+				out.Note = fmt.Sprintf("no matches in the %d of %d result pages scanned (--max-scan-pages cap); raise --max-scan-pages or narrow the date window", out.ScannedPages, out.TotalPages)
+			case len(out.Rows) == 0:
+				out.Note = "no disclosures matched the filters in the full result set"
+			case len(out.Rows) >= limitFlag && (out.TotalCount > len(out.Rows) || out.ScannedPages < out.TotalPages):
+				out.Note = fmt.Sprintf("truncated at --limit %d of %d total disclosures", limitFlag, out.TotalCount)
+			}
+
+			// Persist every fetched header (matched or not) to the local
+			// index. Best-effort: an index write failure warns, it never
+			// blocks the live answer.
+			if err := upsertFilings(cmd, dbPath, reqSymbol, fetched); err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not update local pse_disclosures index: %v\n", err)
+			}
+
+			// --all rows: annotate symbols from the local registry when known.
+			if allCompanies {
+				annotateFilingSymbols(cmd, dbPath, out.Rows, fetched)
+			}
+
+			return printJSONFiltered(cmd.OutOrStdout(), out, flags)
+		},
+	}
+	cmd.Flags().StringVar(&templateFlag, "template", "", `Server-side disclosure template filter, exact name (e.g. "Declaration of Cash Dividends")`)
+	cmd.Flags().StringVar(&keywordFlag, "keyword", "", "Client-side title keyword filter (the endpoint ignores its own keyword parameter)")
+	cmd.Flags().StringVar(&fromDateFlag, "from-date", "", "Range start, MM-DD-YYYY (default: 90 days ago)")
+	cmd.Flags().StringVar(&toDateFlag, "to-date", "", "Range end, MM-DD-YYYY (default: today, Manila)")
+	cmd.Flags().IntVar(&limitFlag, "limit", 20, "Maximum rows to return")
+	cmd.Flags().IntVar(&maxScanPages, "max-scan-pages", 3, "Maximum result pages to scan (50 rows/page)")
+	cmd.Flags().BoolVar(&allCompanies, "all", false, "Search across all companies (no symbol filter)")
+	cmd.Flags().StringVar(&dbPath, "db", "", "SQLite database file path (default: resolved data directory data.db)")
+	return cmd
+}
+
+// upsertFilings writes fetched disclosure headers into pse_disclosures.
+// symbol may be "" (market-wide scan); cmpy_id is always recorded so a
+// later registry join can backfill symbols.
+func upsertFilings(cmd *cobra.Command, dbPath, symbol string, rows []pseedge.Disclosure) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	db, err := store.OpenWithContext(cmd.Context(), dbPath)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	if err := db.EnsurePSEEdgeTables(cmd.Context()); err != nil {
+		return err
+	}
+	storeRows := make([]store.PSEDisclosureRow, 0, len(rows))
+	for _, d := range rows {
+		sym := symbol
+		if sym == "" {
+			if co, err := db.LookupPSECompanyByCmpyID(cmd.Context(), d.CmpyID); err == nil {
+				sym = co.Symbol
+			}
+		}
+		storeRows = append(storeRows, store.PSEDisclosureRow{
+			EdgeNo:      d.EdgeNo,
+			CmpyID:      d.CmpyID,
+			Symbol:      sym,
+			Template:    d.Template,
+			Title:       d.Title,
+			DisclosedAt: d.DisclosedAt,
+		})
+	}
+	return db.UpsertPSEDisclosures(cmd.Context(), storeRows)
+}
+
+// annotateFilingSymbols backfills the symbol field of --all output rows
+// from the local registry (best-effort; unknown issuers stay blank).
+func annotateFilingSymbols(cmd *cobra.Command, dbPath string, rows []filingRow, fetched []pseedge.Disclosure) {
+	db, err := store.OpenReadOnlyContext(cmd.Context(), dbPath)
+	if err != nil {
+		return
+	}
+	defer db.Close()
+	byEdgeNo := make(map[string]int, len(fetched))
+	for _, d := range fetched {
+		byEdgeNo[d.EdgeNo] = d.CmpyID
+	}
+	cache := map[int]string{}
+	for i := range rows {
+		cmpyID, ok := byEdgeNo[rows[i].EdgeNo]
+		if !ok {
+			continue
+		}
+		sym, cached := cache[cmpyID]
+		if !cached {
+			if co, err := db.LookupPSECompanyByCmpyID(cmd.Context(), cmpyID); err == nil {
+				sym = co.Symbol
+			}
+			cache[cmpyID] = sym
+		}
+		rows[i].Symbol = sym
+	}
+}

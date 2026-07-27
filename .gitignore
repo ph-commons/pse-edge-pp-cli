@@ -1,0 +1,27 @@
+# Compiled binaries (built via `go build` / goreleaser)
+/pse-edge-pp-cli
+/pse-edge-pp-mcp
+/bin/
+/dist/
+
+# Local SQLite mirror written at runtime
+*.db
+*.db-shm
+*.db-wal
+
+# Go build/test artifacts
+*.out
+*.test
+*.exe
+
+# Editor / OS noise
+.DS_Store
+*.swp
+*.swo
+
+# Local run artifacts (not for public tree)
+.manuscripts/
+dogfood-results.json
+workflow-verify-report.json
+apify-actor-audit-report.json
+.printing-press-pii-polish.json

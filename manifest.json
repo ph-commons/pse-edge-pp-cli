@@ -1,0 +1,27 @@
+{
+  "manifest_version": "0.3",
+  "name": "pse-edge-pp-mcp",
+  "display_name": "PSE Edge",
+  "version": "0.1.0",
+  "description": "The only maintained, agent-native CLI for Philippine Stock Exchange data — quotes, filings, and a local price history no free API serves.",
+  "author": {
+    "name": "CLI Printing Press"
+  },
+  "license": "Apache-2.0",
+  "server": {
+    "type": "binary",
+    "entry_point": "bin/pse-edge-pp-mcp",
+    "mcp_config": {
+      "command": "${__dirname}/bin/pse-edge-pp-mcp",
+      "args": []
+    }
+  },
+  "compatibility": {
+    "claude_desktop": ">=1.0.0",
+    "platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ]
+  }
+}

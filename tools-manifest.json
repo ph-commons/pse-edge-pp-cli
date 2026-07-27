@@ -1,0 +1,253 @@
+{
+  "api_name": "pse-edge",
+  "base_url": "https://edge.pse.com.ph",
+  "description": "Agent-native Philippine Stock Exchange CLI — quotes, filings, and a local price history no free API serves.",
+  "mcp_ready": "full",
+  "http_transport": "standard",
+  "auth": {
+    "type": "none"
+  },
+  "required_headers": [],
+  "tools": [
+    {
+      "name": "companies_directory",
+      "description": "One page of the full listed-company directory (name, symbol, cmpy_id, security_id). Optional: page (default: 1).",
+      "method": "GET",
+      "path": "/companyDirectory/search.ax",
+      "no_auth": true,
+      "params": [
+        {
+          "name": "page",
+          "wire_name": "pageNo",
+          "type": "int",
+          "location": "query",
+          "description": "Directory page number (about 50 companies per page)"
+        }
+      ]
+    },
+    {
+      "name": "companies_lookup",
+      "description": "Search companies by name or symbol prefix (first 20 alphabetical matches only — use exact-match filtering). Required: query. Returns array of CompanyMatch.",
+      "method": "GET",
+      "path": "/autoComplete/searchCompanyNameSymbol.ax",
+      "no_auth": true,
+      "params": [
+        {
+          "name": "query",
+          "wire_name": "term",
+          "type": "string",
+          "location": "query",
+          "description": "Company name or ticker symbol prefix",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "companies_profile",
+      "description": "Company profile page: sector, subsector, incorporation, auditor. Required: company-id. Optional: security-id.",
+      "method": "GET",
+      "path": "/companyInformation/form.do",
+      "no_auth": true,
+      "params": [
+        {
+          "name": "company-id",
+          "wire_name": "cmpy_id",
+          "type": "int",
+          "location": "query",
+          "description": "PSE Edge company ID (from resolve or the directory)",
+          "required": true
+        },
+        {
+          "name": "security-id",
+          "wire_name": "security_id",
+          "type": "int",
+          "location": "query",
+          "description": "Security ID for multi-class listings (from the directory)"
+        }
+      ]
+    },
+    {
+      "name": "disclosures_document",
+      "description": "Full disclosure document content as server-rendered HTML (use this, never the broken downloadFile.do PDF path). Required: file-id.",
+      "method": "GET",
+      "path": "/downloadHtml.do",
+      "no_auth": true,
+      "params": [
+        {
+          "name": "file-id",
+          "wire_name": "file_id",
+          "type": "int",
+          "location": "query",
+          "description": "Document file ID from the disclosure viewer",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "disclosures_search",
+      "description": "Search disclosures by company, template, and date range (server-side; the keyword parameter is IGNORED upstream — use the filings command for client-side keyword filtering). Upstream expects a form-urlencoded body, not JSON. Optional: company-id, keyword, template (plus 2 more).",
+      "method": "POST",
+      "path": "/announcements/search.ax",
+      "no_auth": true,
+      "params": [
+        {
+          "name": "company-id",
+          "wire_name": "companyId",
+          "type": "string",
+          "location": "body",
+          "description": "PSE Edge company ID (empty searches all companies)"
+        },
+        {
+          "name": "keyword",
+          "type": "string",
+          "location": "body",
+          "description": "Free-text keyword filter"
+        },
+        {
+          "name": "template",
+          "wire_name": "tmplNm",
+          "type": "string",
+          "location": "body",
+          "description": "Disclosure template name filter (e.g. Quarterly Report)"
+        },
+        {
+          "name": "from-date",
+          "wire_name": "fromDate",
+          "type": "string",
+          "location": "body",
+          "description": "Range start, MM-DD-YYYY"
+        },
+        {
+          "name": "to-date",
+          "wire_name": "toDate",
+          "type": "string",
+          "location": "body",
+          "description": "Range end, MM-DD-YYYY"
+        }
+      ]
+    },
+    {
+      "name": "disclosures_view",
+      "description": "Disclosure viewer wrapper for one filing. Required: edge-no.",
+      "method": "GET",
+      "path": "/openDiscViewer.do",
+      "no_auth": true,
+      "params": [
+        {
+          "name": "edge-no",
+          "wire_name": "edge_no",
+          "type": "string",
+          "location": "query",
+          "description": "Disclosure hash from search results",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "financials_report",
+      "description": "Balance-sheet and income-statement summary tables for a company (server-rendered HTML; authoritative when the PDF download is broken). Required: company-id.",
+      "method": "GET",
+      "path": "/companyPage/financial_reports_view.do",
+      "no_auth": true,
+      "params": [
+        {
+          "name": "company-id",
+          "wire_name": "cmpy_id",
+          "type": "int",
+          "location": "query",
+          "description": "PSE Edge company ID",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "market_composite",
+      "description": "Composite/sector page: PSEi and sector indices, market summary (volume, value, trades, advances/declines/unchanged), embedded daily PSEi series since 2021. HTML-entity-encoded JSON uses single-encoded \u0026quot; — decode before parsing. Page is ~1.5MB.",
+      "method": "GET",
+      "path": "/compositeSector",
+      "no_auth": true,
+      "params": []
+    },
+    {
+      "name": "prices_history",
+      "description": "Daily OHLC and value-traded history for one security (first-party JSON). Required: company-id, security-id, start-date, end-date. Returns the new ChartData.",
+      "method": "POST",
+      "path": "/common/DisclosureCht.ax",
+      "no_auth": true,
+      "params": [
+        {
+          "name": "company-id",
+          "wire_name": "cmpy_id",
+          "type": "int",
+          "location": "body",
+          "description": "PSE Edge company ID",
+          "required": true
+        },
+        {
+          "name": "security-id",
+          "wire_name": "security_id",
+          "type": "int",
+          "location": "body",
+          "description": "Security ID (from the directory; required for correct series)",
+          "required": true
+        },
+        {
+          "name": "start-date",
+          "wire_name": "startDate",
+          "type": "string",
+          "location": "body",
+          "description": "Range start, MM-DD-YYYY",
+          "required": true
+        },
+        {
+          "name": "end-date",
+          "wire_name": "endDate",
+          "type": "string",
+          "location": "body",
+          "description": "Range end, MM-DD-YYYY",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "prices_snapshot",
+      "description": "Current-session stock data page: last price, change, OHLC, volume, value, market cap. Required: company-id. Optional: security-id.",
+      "method": "GET",
+      "path": "/companyPage/stockData.do",
+      "no_auth": true,
+      "params": [
+        {
+          "name": "company-id",
+          "wire_name": "cmpy_id",
+          "type": "int",
+          "location": "query",
+          "description": "PSE Edge company ID",
+          "required": true
+        },
+        {
+          "name": "security-id",
+          "wire_name": "security_id",
+          "type": "int",
+          "location": "query",
+          "description": "Security ID for multi-class listings (GTCAP-class companies need this)"
+        }
+      ]
+    },
+    {
+      "name": "quotes_get",
+      "description": "EOD quote for one ticker: close, percent change, volume. as_of is a synthetic midnight stamp — it carries no trade-time information; derive the trading date from the session calendar. Required: symbol. Returns the PhisixQuote.",
+      "method": "GET",
+      "path": "/stocks/{symbol}.json",
+      "no_auth": true,
+      "params": [
+        {
+          "name": "symbol",
+          "type": "string",
+          "location": "path",
+          "description": "Ticker symbol, exact match (e.g. AT, GTCAP)",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

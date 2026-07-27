@@ -1,0 +1,64 @@
+{
+  "schema_version": 2,
+  "generated_at": "2026-07-27T10:08:03.887211Z",
+  "printing_press_version": "4.29.0",
+  "api_name": "pse-edge",
+  "display_name": "PSE Edge",
+  "cli_name": "pse-edge-pp-cli",
+  "creator": {
+    "handle": "ngpestelos",
+    "name": "Nestor G Pestelos Jr"
+  },
+  "owner": "ngpestelos",
+  "printer": "ngpestelos",
+  "printer_name": "Nestor G Pestelos Jr",
+  "spec_path": "pse-edge-spec.yaml",
+  "spec_format": "internal",
+  "spec_checksum": "sha256:dcaeb8feccab44363f8757ebfd92b58c04d464af306df97ae476c7e38a2e0c7a",
+  "run_id": "20260727-155656-a8a699bf",
+  "category": "commerce",
+  "description": "Agent-native Philippine Stock Exchange CLI — quotes, filings, and a local price history no free API serves.",
+  "mcp_binary": "pse-edge-pp-mcp",
+  "mcp_tool_count": 11,
+  "mcp_public_tool_count": 11,
+  "mcp_ready": "full",
+  "api_version": "0.1.0",
+  "auth_type": "none",
+  "novel_features": [
+    {
+      "name": "Local history query",
+      "command": "history",
+      "description": "Query daily OHLC/value history for any ticker or the PSEi from the local store — data no free PSE API serves."
+    },
+    {
+      "name": "Drift / relative strength",
+      "command": "drift",
+      "description": "Percent change over a window, absolute and versus the PSEi over the same sessions, with 52-week band position."
+    },
+    {
+      "name": "Session state",
+      "command": "session",
+      "description": "Philippine trading-calendar verdict: trading day or not, pre/post-close gate, last completed trading date."
+    },
+    {
+      "name": "Freshness audit",
+      "command": "stale",
+      "description": "Per-ticker last-synced trading date versus the last completed trading day, with in-series gaps listed."
+    },
+    {
+      "name": "Filing-deadline tracker",
+      "command": "deadlines",
+      "description": "Computed 17-Q/17-A due dates per SRC Rule 68 45/105-day windows, joined to local disclosures: filed, pending, or overdue."
+    },
+    {
+      "name": "Breadth trend",
+      "command": "breadth",
+      "description": "Advance/decline/unchanged and value-traded trend over time from local index snapshots."
+    },
+    {
+      "name": "Local movers",
+      "command": "movers",
+      "description": "Ranked gainers and losers across the synced universe for a window, with universe size and as-of stated."
+    }
+  ]
+}

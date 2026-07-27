@@ -14,12 +14,13 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/ngpestelos/pse-edge-pp-cli/internal/client"
 	"github.com/ngpestelos/pse-edge-pp-cli/internal/psecal"
 	"github.com/ngpestelos/pse-edge-pp-cli/internal/pseedge"
+	"github.com/spf13/cobra"
 )
 
 // phisixStockURL is the community phisix mirror (unknown-operator redeploy;
@@ -111,7 +112,8 @@ nulls with a "closed-session" note, never zeros.`,
 			}
 
 			state := psecal.SessionState(time.Now())
-			rows := make([]quoteRow, 0, len(args))
+			// Dedup while preserving caller order.
+			syms := make([]string, 0, len(args))
 			seen := map[string]bool{}
 			for _, arg := range args {
 				sym := strings.ToUpper(strings.TrimSpace(arg))
@@ -119,11 +121,36 @@ nulls with a "closed-session" note, never zeros.`,
 					continue
 				}
 				seen[sym] = true
-				row, err := fetchQuote(cmd, flags, c, dbPath, sym, state)
-				if err != nil {
-					return err
+				syms = append(syms, sym)
+			}
+			// Parallelize multi-ticker quotes (each symbol still dual-sources
+			// edge+phisix concurrently inside fetchQuote). Cap workers so a
+			// long list cannot open unbounded connections to EDGE.
+			const maxQuoteWorkers = 6
+			type result struct {
+				row *quoteRow
+				err error
+			}
+			results := make([]result, len(syms))
+			sem := make(chan struct{}, maxQuoteWorkers)
+			var wg sync.WaitGroup
+			for i, sym := range syms {
+				wg.Add(1)
+				go func(i int, sym string) {
+					defer wg.Done()
+					sem <- struct{}{}
+					defer func() { <-sem }()
+					row, err := fetchQuote(cmd, flags, c, dbPath, sym, state)
+					results[i] = result{row: row, err: err}
+				}(i, sym)
+			}
+			wg.Wait()
+			rows := make([]quoteRow, 0, len(syms))
+			for _, r := range results {
+				if r.err != nil {
+					return r.err
 				}
-				rows = append(rows, *row)
+				rows = append(rows, *r.row)
 			}
 			return printJSONFiltered(cmd.OutOrStdout(), rows, flags)
 		},
@@ -147,10 +174,19 @@ func fetchQuote(cmd *cobra.Command, flags *rootFlags, c *client.Client, dbPath, 
 		Stale: liveFetchStale(state),
 	}
 
-	// Edge snapshot.
-	var snap *pseedge.Snapshot
-	var edgeErr error
-	{
+	// Edge + phisix in parallel (independent sources; client.Get is concurrent-safe
+	// for response bodies; lastContentType is best-effort and may race).
+	var (
+		snap      *pseedge.Snapshot
+		edgeErr   error
+		phisix    *phisixResponse
+		phisixErr error
+		mcap      *float64
+		srcWG     sync.WaitGroup
+	)
+	srcWG.Add(2)
+	go func() {
+		defer srcWG.Done()
 		reqCtx, cancel := boundCtx(cmd.Context(), flags)
 		data, err := c.Get(reqCtx, stockDataPath, map[string]string{
 			"cmpy_id":     strconv.Itoa(rc.CmpyID),
@@ -159,31 +195,34 @@ func fetchQuote(cmd *cobra.Command, flags *rootFlags, c *client.Client, dbPath, 
 		cancel()
 		if err != nil {
 			edgeErr = err
-		} else if snap, err = pseedge.ParseStockData(string(data)); err != nil {
-			snap = nil
+			return
+		}
+		if s, err := pseedge.ParseStockData(string(data)); err != nil {
 			edgeErr = err
 		} else {
-			row.MarketCap = pseedge.ParseMarketCap(string(data))
+			snap = s
+			mcap = pseedge.ParseMarketCap(string(data))
 		}
-	}
-
-	// Phisix fast path.
-	var phisix *phisixResponse
-	var phisixErr error
-	{
+	}()
+	go func() {
+		defer srcWG.Done()
 		reqCtx, cancel := boundCtx(cmd.Context(), flags)
 		data, err := c.Get(reqCtx, fmt.Sprintf(phisixStockURL, url.PathEscape(rc.Symbol)), nil)
 		cancel()
 		if err != nil {
 			phisixErr = err
-		} else {
-			var p phisixResponse
-			if err := json.Unmarshal(data, &p); err != nil || len(p.Stocks) == 0 {
-				phisixErr = fmt.Errorf("phisix %s: response has no stocks entry", rc.Symbol)
-			} else {
-				phisix = &p
-			}
+			return
 		}
+		var p phisixResponse
+		if err := json.Unmarshal(data, &p); err != nil || len(p.Stocks) == 0 {
+			phisixErr = fmt.Errorf("phisix %s: response has no stocks entry", rc.Symbol)
+		} else {
+			phisix = &p
+		}
+	}()
+	srcWG.Wait()
+	if mcap != nil {
+		row.MarketCap = mcap
 	}
 
 	if snap == nil && phisix == nil {

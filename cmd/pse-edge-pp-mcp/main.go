@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/ngpestelos/pse-edge-pp-cli/internal/cli"
 	mcptools "github.com/ngpestelos/pse-edge-pp-cli/internal/mcp"
 )
 
@@ -23,16 +24,13 @@ const (
 	defaultHTTPAddr = ":7777"
 )
 
-// version is the printed MCP server's version, overridable at build time via ldflags.
-var version = "0.0.0-dev"
-
 func main() {
 	// Pin the learn-event surface for this process and every walker
 	// shell-out child, so usage events record surface=mcp.
 	_ = os.Setenv("PSE_EDGE_LEARN_SURFACE", "mcp")
 	s := server.NewMCPServer(
 		"Pse Edge",
-		version,
+		cli.Version(),
 		server.WithToolCapabilities(false),
 	)
 

@@ -166,6 +166,39 @@ down&nbsp;
 </tr>
 </table>`
 
+// stockDownLiveNBSPFixture mirrors EDGE stockData.do as observed 2026-07-27
+// (issue #8): U+00A0 between "down" and the absolute change, and a leading
+// space inside the percent parentheses. Old changeCellRE failed to match
+// (phisix-only fallback) or, if only the percent-space were fixed, would
+// silently invert the sign by matching from the digits with an empty prefix.
+const stockDownLiveNBSPFixture = `<script>
+sendData.cmpy_id = "34";
+sendData.security_id = "320";
+</script>
+<div class="compInfo"><p>Atlas Consolidated Mining and Development Corporation</p></div>
+<option value="320" selected>AT</option>
+<table class="view">
+<tr>
+  <th>Change(% Change)</th>
+  <td style="text-align:right;padding-right:1.2em;">down` + "\u00a0" + ` 0.040 ( 1.32%)</td>
+</tr>
+</table>`
+
+// stockDownASCIISpacedFixture is the same shape without NBSP — pure ASCII
+// "down  0.040 ( 1.32%)" as reported in the issue body.
+const stockDownASCIISpacedFixture = `<script>
+sendData.cmpy_id = "34";
+sendData.security_id = "320";
+</script>
+<div class="compInfo"><p>Atlas Consolidated Mining and Development Corporation</p></div>
+<option value="320" selected>AT</option>
+<table class="view">
+<tr>
+  <th>Change(% Change)</th>
+  <td>down  0.040 ( 1.32%)</td>
+</tr>
+</table>`
+
 // stockClosedFixture has a blank change cell: explicit closed-session
 // state, change fields must stay nil (never zero).
 const stockClosedFixture = `<script>
@@ -383,6 +416,39 @@ func TestParseStockDataDownSign(t *testing.T) {
 	}
 	if v := fp(t, snap.PctChange, "PctChange"); v != -4.43 {
 		t.Errorf("PctChange = %v, want -4.43", v)
+	}
+}
+
+// TestParseStockDataDownDayLiveMarkup covers issue #8: down-day cells with
+// NBSP and/or interior percent whitespace must parse as negative change,
+// never MarkupDriftError and never a silent positive (latent sign inversion).
+func TestParseStockDataDownDayLiveMarkup(t *testing.T) {
+	cases := []struct {
+		name    string
+		fixture string
+		wantAbs float64
+		wantPct float64
+	}{
+		{"nbsp_and_spaced_pct", stockDownLiveNBSPFixture, -0.040, -1.32},
+		{"ascii_spaced_pct", stockDownASCIISpacedFixture, -0.040, -1.32},
+		{"entity_nbsp_multiline", stockDownFixture, -0.54, -4.43},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			snap, err := ParseStockData(tc.fixture)
+			if err != nil {
+				t.Fatalf("ParseStockData: %v", err)
+			}
+			if v := fp(t, snap.Change, "Change"); v != tc.wantAbs {
+				t.Errorf("Change = %v, want %v", v, tc.wantAbs)
+			}
+			if v := fp(t, snap.PctChange, "PctChange"); v != tc.wantPct {
+				t.Errorf("PctChange = %v, want %v", v, tc.wantPct)
+			}
+			if snap.Change != nil && *snap.Change > 0 {
+				t.Errorf("down-day Change must not be positive (latent sign inversion): %v", *snap.Change)
+			}
+		})
 	}
 }
 

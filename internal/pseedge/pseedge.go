@@ -309,10 +309,35 @@ var (
 	asOfRE           = regexp.MustCompile(`As of\s+([A-Z][a-z]{2} \d{1,2}, \d{4}[^<]*)`)
 	thTdRE           = regexp.MustCompile(`(?s)<th>([^<]+)</th>\s*<td[^>]*>(.*?)</td>`)
 	// changeCellRE per BUILD-CONTEXT §3: absolute change is UNSIGNED; the
-	// up/down word prefix carries the sign.
-	changeCellRE    = regexp.MustCompile(`(?s)(up|down)?(?:\s|&nbsp;)*([\d,\.]+)\s*\(([\d,\.\-]+)%\)`)
+	// required up/down word prefix carries the sign. Prefix is mandatory so
+	// an unmatched "down" cannot be skipped by an unanchored match that
+	// then silently reports a positive change (issue #8). Percent group
+	// allows interior whitespace ("( 1.32%)") as currently served by EDGE.
+	// Callers must run normalizeChangeCell first (NBSP / &nbsp; → space).
+	changeCellRE    = regexp.MustCompile(`(?is)(up|down)\s*([\d,\.]+)\s*\(\s*([\d,\.\-]+)\s*%\s*\)`)
 	prevCloseDateRE = regexp.MustCompile(`\(([A-Z][a-z]{2} \d{1,2}, \d{4})\)`)
 )
+
+// normalizeChangeCell flattens EDGE change-cell markup for changeCellRE.
+// PSE Edge has served U+00A0 between the direction word and the absolute
+// change; Go's \s is ASCII-only and does not match it. Decoding &nbsp; /
+// numeric entities and mapping NBSP to a regular space closes that gap
+// without relying on the entity form remaining stable.
+func normalizeChangeCell(raw string) string {
+	s := html.UnescapeString(raw)
+	// Explicit entity leftovers (if UnescapeString was skipped upstream)
+	// and common numeric forms that may appear in scraped fragments.
+	s = strings.ReplaceAll(s, "&nbsp;", " ")
+	s = strings.ReplaceAll(s, "&#160;", " ")
+	s = strings.ReplaceAll(s, "&#xA0;", " ")
+	s = strings.ReplaceAll(s, "&#xa0;", " ")
+	return strings.Map(func(r rune) rune {
+		if r == '\u00a0' {
+			return ' '
+		}
+		return r
+	}, s)
+}
 
 // ParseStockData parses a companyPage/stockData.do page. Bogus company IDs
 // return HTTP 200 with a ~1KB shell ("Stock symbol not found." message, no
@@ -374,15 +399,16 @@ func ParseStockData(htmlBody string) (*Snapshot, error) {
 		snap.PrevClose = parseFloatLoose(raw)
 	}
 
-	// Change cell: sign derived from the up/down prefix. A BLANK cell is an
-	// explicit closed-session state — change fields stay nil, never zero.
-	// A NON-blank cell the pattern cannot match is upstream markup drift: a
-	// typed hard error, never a silent nil (callers could not tell the two
-	// apart otherwise).
+	// Change cell: sign derived from the required up/down prefix. A BLANK
+	// cell is an explicit closed-session state — change fields stay nil,
+	// never zero. A NON-blank cell the pattern cannot match is upstream
+	// markup drift: a typed hard error, never a silent nil (callers could
+	// not tell the two apart otherwise). Bare "up"/"down" with no figures
+	// also stays nil (legitimate intermediate/blank state).
 	if raw, ok := cells["Change(% Change)"]; ok {
-		m := changeCellRE.FindStringSubmatch(raw)
+		m := changeCellRE.FindStringSubmatch(normalizeChangeCell(raw))
 		if m == nil {
-			if flat := stripTags(raw); flat != "" && flat != "-" && flat != "up" && flat != "down" {
+			if flat := stripTags(raw); flat != "" && flat != "-" && !strings.EqualFold(flat, "up") && !strings.EqualFold(flat, "down") {
 				return nil, &MarkupDriftError{Endpoint: "companyPage/stockData.do", Field: "Change(% Change)", Content: flat}
 			}
 		}
@@ -390,7 +416,7 @@ func ParseStockData(htmlBody string) (*Snapshot, error) {
 			abs := parseFloatLoose(m[2])
 			pct := parseFloatLoose(strings.TrimSuffix(m[3], "%"))
 			sign := 1.0
-			if m[1] == "down" {
+			if strings.EqualFold(m[1], "down") {
 				sign = -1.0
 			}
 			if abs != nil {

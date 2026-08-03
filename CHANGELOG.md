@@ -13,11 +13,20 @@ automation for this independent repo (that rule applies only when publishing
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-04
+
 ### Fixed
 
 - Parse PSE Edge `stockData.do` down-day `Change(% Change)` cells that use U+00A0
   and interior percent whitespace; require `up`/`down` prefix so an unmatched
-  direction word cannot silently invert sign ([#8](https://github.com/ngpestelos/pse-edge-pp-cli/issues/8)).
+  direction word cannot silently invert sign
+  ([#8](https://github.com/ngpestelos/pse-edge-pp-cli/issues/8),
+  [#14](https://github.com/ngpestelos/pse-edge-pp-cli/pull/14)).
+
+### Changed
+
+- Bump `golang.org/x/net` 0.55.0 → 0.57.0
+  ([#12](https://github.com/ngpestelos/pse-edge-pp-cli/pull/12)).
 
 ## [0.1.1] - 2026-07-27
 
@@ -32,3 +41,8 @@ automation for this independent repo (that rule applies only when publishing
 
 - Initial public release: agent-native PSE Edge CLI (quotes, filings, local
   history, MCP).
+
+[Unreleased]: https://github.com/ngpestelos/pse-edge-pp-cli/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/ngpestelos/pse-edge-pp-cli/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/ngpestelos/pse-edge-pp-cli/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/ngpestelos/pse-edge-pp-cli/releases/tag/v0.1.0

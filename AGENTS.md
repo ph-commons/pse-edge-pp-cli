@@ -57,7 +57,18 @@ For install, examples, and longer product guidance, read `README.md` and `SKILL.
 
 ## Release Ledger
 
-`CHANGELOG.md` and `.printing-press-release.json` are the public library's per-CLI release ledger. Fresh prints carry an unstamped runtime version such as `0.0.0-dev`; the final `YYYY.M.N` CLI release version is assigned only after a publish PR merges in `mvanhorn/printing-press-library`. Do not hand-bump those files or edit `var version = ...` for release bookkeeping; preserve existing ledger files on reprint and let the library workflow stamp the next release.
+This repo is an **independent** public CLI (tags + goreleaser), not a library-catalog
+print that waits on `mvanhorn/printing-press-library` post-merge stamping.
+
+- **`CHANGELOG.md` is hand-maintained** (Keep a Changelog). Every user-facing
+  fix/feature PR **must** add a bullet under `## [Unreleased]`. On tag release,
+  promote Unreleased into `## [x.y.z] - YYYY-MM-DD` and clear Unreleased.
+- Do **not** hand-edit runtime `var version = ...` for release bookkeeping —
+  version comes from ldflags / git tag / `resolveVersion`.
+- `.printing-press-release.json` may remain from the original print; preserve it
+  on reprint if present, but it is **not** the SSOT for this fork’s release notes.
+- `.printing-press-patches/` remains the reprint-guard for code/doc intent
+  (altitude: durable guard, not a substitute for CHANGELOG).
 
 ## Local Customizations
 

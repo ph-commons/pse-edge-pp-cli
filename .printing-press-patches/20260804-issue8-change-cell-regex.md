@@ -31,3 +31,8 @@ down-day closes (observed 2026-07-27, reporter jiegomojiica):
 go test ./internal/pseedge/ -count=1 -run 'ParseStockData'
 go test ./...
 ```
+
+## Changelog
+
+Entry under `CHANGELOG.md` → `## [Unreleased]` / Fixed (policy: hand-maintained
+for this independent repo as of 2026-08-04).

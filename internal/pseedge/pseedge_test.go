@@ -452,6 +452,60 @@ func TestParseStockDataDownDayLiveMarkup(t *testing.T) {
 	}
 }
 
+// stockDigitsOnlyChangeFixture is the latent sign-inversion residue: digits
+// and percent with no up/down word. Old optional-prefix regex could match
+// this as positive change; required prefix must surface MarkupDriftError.
+const stockDigitsOnlyChangeFixture = `<script>
+sendData.cmpy_id = "34";
+sendData.security_id = "320";
+</script>
+<div class="compInfo"><p>Atlas Consolidated Mining and Development Corporation</p></div>
+<option value="320" selected>AT</option>
+<table class="view">
+<tr>
+  <th>Change(% Change)</th>
+  <td>0.090 (1.17%)</td>
+</tr>
+</table>`
+
+// stockDownWrappedTagsFixture: direction/numbers inside inline tags still parse.
+const stockDownWrappedTagsFixture = `<script>
+sendData.cmpy_id = "34";
+sendData.security_id = "320";
+</script>
+<div class="compInfo"><p>Atlas Consolidated Mining and Development Corporation</p></div>
+<option value="320" selected>AT</option>
+<table class="view">
+<tr>
+  <th>Change(% Change)</th>
+  <td><span>down</span>` + "\u00a0" + `<b>0.040</b> (<i>1.32</i>%)</td>
+</tr>
+</table>`
+
+func TestParseStockDataChangeCellDigitsOnlyIsDrift(t *testing.T) {
+	_, err := ParseStockData(stockDigitsOnlyChangeFixture)
+	var driftErr *MarkupDriftError
+	if !errors.As(err, &driftErr) {
+		t.Fatalf("digits-only change cell must be *MarkupDriftError (not silent positive), got %v", err)
+	}
+	if driftErr.Field != "Change(% Change)" {
+		t.Errorf("Field = %q", driftErr.Field)
+	}
+}
+
+func TestParseStockDataChangeCellStripsInnerTags(t *testing.T) {
+	snap, err := ParseStockData(stockDownWrappedTagsFixture)
+	if err != nil {
+		t.Fatalf("ParseStockData: %v", err)
+	}
+	if v := fp(t, snap.Change, "Change"); v != -0.040 {
+		t.Errorf("Change = %v, want -0.040 (tags stripped before match)", v)
+	}
+	if v := fp(t, snap.PctChange, "PctChange"); v != -1.32 {
+		t.Errorf("PctChange = %v, want -1.32", v)
+	}
+}
+
 func TestParseStockDataClosedSessionBlankChange(t *testing.T) {
 	snap, err := ParseStockData(stockClosedFixture)
 	if err != nil {

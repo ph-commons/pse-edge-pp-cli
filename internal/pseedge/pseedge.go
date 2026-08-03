@@ -313,7 +313,7 @@ var (
 	// an unmatched "down" cannot be skipped by an unanchored match that
 	// then silently reports a positive change (issue #8). Percent group
 	// allows interior whitespace ("( 1.32%)") as currently served by EDGE.
-	// Callers must run normalizeChangeCell first (NBSP / &nbsp; → space).
+	// Callers must strip tags then normalizeChangeCell (NBSP → space).
 	changeCellRE    = regexp.MustCompile(`(?is)(up|down)\s*([\d,\.]+)\s*\(\s*([\d,\.\-]+)\s*%\s*\)`)
 	prevCloseDateRE = regexp.MustCompile(`\(([A-Z][a-z]{2} \d{1,2}, \d{4})\)`)
 )
@@ -405,10 +405,13 @@ func ParseStockData(htmlBody string) (*Snapshot, error) {
 	// markup drift: a typed hard error, never a silent nil (callers could
 	// not tell the two apart otherwise). Bare "up"/"down" with no figures
 	// also stays nil (legitimate intermediate/blank state).
+	// Match on stripTags first so nested markup cannot hide the direction
+	// word, then normalizeChangeCell for NBSP (Go \s is ASCII-only).
 	if raw, ok := cells["Change(% Change)"]; ok {
-		m := changeCellRE.FindStringSubmatch(normalizeChangeCell(raw))
+		flat := stripTags(raw)
+		m := changeCellRE.FindStringSubmatch(normalizeChangeCell(flat))
 		if m == nil {
-			if flat := stripTags(raw); flat != "" && flat != "-" && !strings.EqualFold(flat, "up") && !strings.EqualFold(flat, "down") {
+			if flat != "" && flat != "-" && !strings.EqualFold(flat, "up") && !strings.EqualFold(flat, "down") {
 				return nil, &MarkupDriftError{Endpoint: "companyPage/stockData.do", Field: "Change(% Change)", Content: flat}
 			}
 		}

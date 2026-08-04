@@ -13,6 +13,14 @@ automation for this independent repo (that rule applies only when publishing
 
 ## [Unreleased]
 
+### Added
+
+- `filings get --edge-no` — direct `openDiscViewer.do` lookup for a known disclosure hash when search omits it ([#10](https://github.com/ngpestelos/pse-edge-pp-cli/issues/10)).
+
+### Changed
+
+- `filings` JSON now exposes search telemetry and honesty fields: `returned_count`, `from_date`, `to_date`, `company_id`, `limit`, `max_scan_pages`, `truncated`, `page_cap_hit`, `complete` (relative to the search result set only), `newest_disclosed_at` / `oldest_disclosed_at`, `freshness_gap_days`, and standing `warnings` that search is not an authoritative complete corpus ([#10](https://github.com/ngpestelos/pse-edge-pp-cli/issues/10)).
+
 ## [0.1.2] - 2026-08-04
 
 ### Fixed

@@ -68,7 +68,8 @@ MCP: `go install …/pse-edge-pp-mcp@latest` → `claude mcp add pse-edge-pp-mcp
 | vs PSEi + 52w band | `pse-edge-pp-cli drift AT --since 90d --json` |
 | Gainers/losers | `pse-edge-pp-cli movers --since 7d --json` |
 | Breadth series | `pse-edge-pp-cli breadth --since 30d --json` |
-| Filings | `pse-edge-pp-cli filings AT --json` |
+| Filings (search index) | `pse-edge-pp-cli filings AT --json` |
+| Filing by edge_no (viewer) | `pse-edge-pp-cli filings get --edge-no <hash> --json` |
 | 17-Q/17-A deadlines | `pse-edge-pp-cli deadlines AT --json` |
 | Typed financials | `pse-edge-pp-cli financials AT --json` |
 | Stale local data | `pse-edge-pp-cli stale --json` |
@@ -83,6 +84,7 @@ MCP: `go install …/pse-edge-pp-mcp@latest` → `claude mcp add pse-edge-pp-mcp
 - Gate EOD on `session` — blank change fields on non-trading days are **states**, not zeros.
 - `history` / `drift` / `movers` / `breadth` / `deadlines` need `sync market` when the local store is empty.
 - Announcements search: server ignores free-text `keyword` — CLI filters titles client-side.
+- Filings search is **not** an authoritative complete corpus (`complete` is relative to `announcements/search.ax` only). Prefer `filings get --edge-no` when a viewer URL is known.
 - Phisix official API gone 2023-12-04; api3 is convenience overlay, not first-party.
 
 ## Recipes
@@ -97,6 +99,9 @@ pse-edge-pp-cli quote AT GTCAP HTI --agent --select symbol,close,change_pct,as_o
 # Filing status
 pse-edge-pp-cli deadlines AT --json
 pse-edge-pp-cli filings GTCAP --from-date 01-01-2026 --json
+# Always read warnings/complete/freshness_gap_days — search is not a complete corpus.
+# Known edge_no missing from search:
+pse-edge-pp-cli filings get --edge-no 2bc053ab3b1339fb64d70b69f0a3140b --json
 
 # Relative strength
 pse-edge-pp-cli drift AT --since 90d --agent

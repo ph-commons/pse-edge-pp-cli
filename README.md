@@ -156,7 +156,15 @@ Computed 17-Q due dates joined to actual filings — filed, pending, or overdue.
 pse-edge-pp-cli filings GTCAP --from-date 01-01-2026 --json
 ```
 
-Lists the year's disclosures and feeds the local index behind deadlines; --keyword is matched client-side because the endpoint ignores it.
+Lists the year's disclosures and feeds the local index behind deadlines; `--keyword` is matched client-side because the endpoint ignores it.
+
+**Completeness:** a successful `filings` response means `announcements/search.ax` answered — not that every official disclosure is in the list. JSON includes `scanned_pages`, `total_pages`, `total_count`, `complete` (relative to the search result set only), `freshness_gap_days`, and `warnings`. For a known `edge_no` missing from search, use the viewer path:
+
+```bash
+pse-edge-pp-cli filings get --edge-no 2bc053ab3b1339fb64d70b69f0a3140b --json
+```
+
+(`disclosures view --edge-no` is the generated raw-HTML path; prefer `filings get` when you need structured company/title/attachment fields.)
 
 ### Relative strength question
 
@@ -337,6 +345,7 @@ Static request headers can be configured under `headers`; per-command header ove
 - **quote shows stale: true or blank change fields** — Run pse-edge-pp-cli session — weekends and PH holidays are non-trading sessions; the last completed trading day is the honest as-of
 - **Edge endpoints intermittently return 404 or empty shells** — The JBoss backend has outage episodes; quote falls back to the other source automatically — re-run doctor to see per-source status
 - **history or drift returns empty for a ticker** — Run pse-edge-pp-cli stale to check sync coverage, then pse-edge-pp-cli sync --resources prices --since 90d
+- **filings omits a disclosure visible on the official viewer** — PSE EDGE search is not a complete corpus (issue #10). Check JSON `warnings`, `complete`, and `freshness_gap_days`. Look up a known `edge_no` with `pse-edge-pp-cli filings get --edge-no <hash> --json` or open the viewer URL directly
 - **Repeated large fetches feel slow** — The market page is ~1.5MB; results are cached with a TTL — avoid tight polling loops, PSE data is EOD-only
 
 ## Sources & Inspiration

@@ -1,12 +1,13 @@
 // Copyright 2026 Nestor G Pestelos Jr and contributors. Licensed under Apache-2.0. See LICENSE.
-// Hand-authored porcelain: disclosure search by ticker with a local
-// pse_disclosures index.
+//
+// Hand-authored porcelain: disclosure search by ticker with local
+// pse_disclosures index, plus direct edge_no viewer lookup.
 //
 // Naming note: the top-level name "disclosures" is already claimed by the
 // generated resource command group (search/view/document), so per the
-// build brief this porcelain is named "filings". The generated group stays
+// build brief the porcelain is named "filings". The generated group stays
 // untouched.
-
+//
 // pp:data-source live
 
 package cli
@@ -19,12 +20,13 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
 	"github.com/ngpestelos/pse-edge-pp-cli/internal/psecal"
 	"github.com/ngpestelos/pse-edge-pp-cli/internal/pseedge"
 	"github.com/ngpestelos/pse-edge-pp-cli/internal/store"
 )
 
-// filingRow is one disclosure header row in the porcelain output.
+// filingRow is one disclosure header row in porcelain output.
 type filingRow struct {
 	EdgeNo      string `json:"edge_no"`
 	Symbol      string `json:"symbol,omitempty"`
@@ -39,13 +41,39 @@ type filingRow struct {
 }
 
 // filingsOut is the porcelain envelope: matched rows plus scan telemetry.
+//
+// Complete is true only relative to the announcements/search.ax result set
+// (all pages scanned and all matched rows returned under --limit). It is
+// NEVER a claim that PSE EDGE has published every filing into search —
+// use filings get --edge-no for known disclosures missing from search.
 type filingsOut struct {
-	Rows         []filingRow `json:"rows"`
-	ScannedPages int         `json:"scanned_pages"`
-	TotalPages   int         `json:"total_pages"`
-	TotalCount   int         `json:"total_count"`
-	Note         string      `json:"note,omitempty"`
+	Rows              []filingRow `json:"rows"`
+	ReturnedCount     int         `json:"returned_count"`
+	ScannedPages      int         `json:"scanned_pages"`
+	TotalPages        int         `json:"total_pages"`
+	TotalCount        int         `json:"total_count"`
+	FromDate          string      `json:"from_date"`
+	ToDate            string      `json:"to_date"`
+	CompanyID         string      `json:"company_id,omitempty"`
+	Symbol            string      `json:"symbol,omitempty"`
+	Limit             int         `json:"limit"`
+	MaxScanPages      int         `json:"max_scan_pages"`
+	Truncated         bool        `json:"truncated"`
+	PageCapHit        bool        `json:"page_cap_hit"`
+	Complete          bool        `json:"complete"`
+	NewestDisclosedAt string      `json:"newest_disclosed_at,omitempty"`
+	OldestDisclosedAt string      `json:"oldest_disclosed_at,omitempty"`
+	FreshnessGapDays  *int        `json:"freshness_gap_days,omitempty"`
+	Warnings          []string    `json:"warnings"`
+	Note              string      `json:"note,omitempty"`
 }
+
+// Standing warning attached to every filings search response (issue #10).
+const filingsSearchCorpusWarning = "announcements/search.ax is not an authoritative complete corpus: filings can exist on openDiscViewer.do that never appear in search results. For a known edge_no use structured lookup: pse-edge-pp-cli filings get --edge-no <hash> --json (disclosures view is raw HTML shell, not the same contract)."
+
+// freshnessGapWarnDays: if the newest hit is this many calendar days before
+// --to-date, surface a freshness-gap warning (upstream lag / missing rows).
+const freshnessGapWarnDays = 7
 
 func init() {
 	registerNovelCommand(func(root *cobra.Command, flags *rootFlags) {
@@ -68,22 +96,32 @@ func newFilingsCmd(flags *rootFlags) *cobra.Command {
 		Short: "Search PSE Edge disclosures by ticker (or --all), upserting headers into the local pse_disclosures index",
 		Long: `Use this command to list a company's disclosures (17-Q/17-A, dividend
 declarations, material information, ...) by ticker symbol, or market-wide
-with --all. Do NOT use it for computed filing-deadline status
-('deadlines') or to read a filing's content ('disclosures document').
+with --all. Do NOT use it for computed filing-deadline status (use
+'deadlines') or to read a filing's body (use 'disclosures document').
 
-The symbol resolves to a companyId via the local registry (live
-autocomplete fallback); the search POSTs announcements/search.ax
-(form-urlencoded) and pages through results. --template filters
-server-side (exact template name, e.g. "Declaration of Cash Dividends");
---keyword is matched client-side against titles because the endpoint
-ignores its keyword parameter (verified live) — pages are scanned up to
---max-scan-pages, and a zero-match scan that hits the cap says so in the
-output note instead of pretending the corpus is empty. Every fetched
-header is upserted into the local pse_disclosures table for offline joins
-(the 'deadlines' command reads it).`,
+The symbol resolves to companyId via the local registry (live autocomplete
+fallback); the search POSTs announcements/search.ax (form-urlencoded) and
+pages through results. --template filters server-side (exact template name,
+e.g. "Declaration of Cash Dividends"); --keyword is matched client-side on
+titles because the endpoint ignores its keyword parameter (verified live)
+— pages are scanned up to --max-scan-pages, and a zero-match scan that hits
+the cap says so in the output note instead of pretending the corpus is empty.
+
+IMPORTANT (completeness): a successful JSON response means the search
+endpoint answered, not that every official disclosure is present. PSE EDGE
+search has been observed to omit filings that remain openable on
+openDiscViewer.do (see issue #10). Every response includes telemetry
+(scanned_pages, total_pages, total_count, complete, warnings) and a standing
+corpus warning. For a known edge_no, use the authoritative viewer path:
+
+  pse-edge-pp-cli filings get --edge-no <hash> --json
+
+Every fetched header is upserted into the local pse_disclosures table for
+offline joins (the 'deadlines' command reads it).`,
 		Example: `  pse-edge-pp-cli filings GTCAP --from-date 01-01-2026 --json
   pse-edge-pp-cli filings GTCAP --template "Declaration of Cash Dividends" --json
-  pse-edge-pp-cli filings --all --limit 50 --json`,
+  pse-edge-pp-cli filings --all --limit 50 --json
+  pse-edge-pp-cli filings get --edge-no 2bc053ab3b1339fb64d70b69f0a3140b --json`,
 		Annotations: map[string]string{"mcp:read-only": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 && !allCompanies {
@@ -105,7 +143,7 @@ header is upserted into the local pse_disclosures table for offline joins
 				return usageErr(fmt.Errorf("invalid --max-scan-pages %d: must be positive", maxScanPages))
 			}
 
-			// Date window: MM-DD-YYYY, defaulting to the trailing 90 days.
+			// Date window: MM-DD-YYYY, defaulting to trailing 90 days.
 			now := time.Now().In(psecal.Manila())
 			if fromDateFlag == "" {
 				fromDateFlag = now.AddDate(0, 0, -90).Format("01-02-2006")
@@ -140,16 +178,24 @@ header is upserted into the local pse_disclosures table for offline joins
 
 			keyword := strings.ToLower(strings.TrimSpace(keywordFlag))
 			hc := &http.Client{}
-			out := filingsOut{Rows: make([]filingRow, 0, limitFlag)}
+			out := filingsOut{
+				Rows:         make([]filingRow, 0, limitFlag),
+				FromDate:     fromDateFlag,
+				ToDate:       toDateFlag,
+				CompanyID:    search.CompanyID,
+				Symbol:       reqSymbol,
+				Limit:        limitFlag,
+				MaxScanPages: maxScanPages,
+			}
 			lastCompleted := psecal.LastCompletedTradingDay(time.Now()).Format("2006-01-02")
-			var fetched []pseedge.Disclosure
 
+			var fetched []pseedge.Disclosure
 			for pageNo := 1; ; pageNo++ {
 				reqCtx, cancel := boundCtx(cmd.Context(), flags)
 				page, err := pseedge.FetchDisclosurePage(reqCtx, hc, search, pageNo)
 				cancel()
 				if err != nil {
-					return apiErr(err)
+					return classifyAPIError(err, flags)
 				}
 				out.ScannedPages++
 				out.TotalPages = page.TotalPages
@@ -163,7 +209,7 @@ header is upserted into the local pse_disclosures table for offline joins
 					if keyword != "" && !strings.Contains(strings.ToLower(d.Title), keyword) {
 						continue
 					}
-					// DisclosedAt is RFC3339 or "" (never a raw page string),
+					// DisclosedAt is RFC3339 or "" (never the page string),
 					// but guard the slice's shape anyway before date-slicing.
 					asOf := lastCompleted
 					if len(d.DisclosedAt) >= 10 {
@@ -189,14 +235,7 @@ header is upserted into the local pse_disclosures table for offline joins
 				}
 			}
 
-			switch {
-			case len(out.Rows) == 0 && out.ScannedPages < out.TotalPages:
-				out.Note = fmt.Sprintf("no matches in the %d of %d result pages scanned (--max-scan-pages cap); raise --max-scan-pages or narrow the date window", out.ScannedPages, out.TotalPages)
-			case len(out.Rows) == 0:
-				out.Note = "no disclosures matched the filters in the full result set"
-			case len(out.Rows) >= limitFlag && (out.TotalCount > len(out.Rows) || out.ScannedPages < out.TotalPages):
-				out.Note = fmt.Sprintf("truncated at --limit %d of %d total disclosures", limitFlag, out.TotalCount)
-			}
+			finalizeFilingsOut(&out, keyword != "")
 
 			// Persist every fetched header (matched or not) to the local
 			// index. Best-effort: an index write failure warns, it never
@@ -210,6 +249,14 @@ header is upserted into the local pse_disclosures table for offline joins
 				annotateFilingSymbols(cmd, dbPath, out.Rows, fetched)
 			}
 
+			// Mirror standing / truncation warnings on stderr for human runs.
+			for _, w := range out.Warnings {
+				fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", w)
+			}
+			if out.Note != "" {
+				fmt.Fprintf(cmd.ErrOrStderr(), "note: %s\n", out.Note)
+			}
+
 			return printJSONFiltered(cmd.OutOrStdout(), out, flags)
 		},
 	}
@@ -221,6 +268,147 @@ header is upserted into the local pse_disclosures table for offline joins
 	cmd.Flags().IntVar(&maxScanPages, "max-scan-pages", 3, "Maximum result pages to scan (50 rows/page)")
 	cmd.Flags().BoolVar(&allCompanies, "all", false, "Search across all companies (no symbol filter)")
 	cmd.Flags().StringVar(&dbPath, "db", "", "SQLite database file path (default: resolved data directory data.db)")
+
+	cmd.AddCommand(newFilingsGetCmd(flags))
+	return cmd
+}
+
+// finalizeFilingsOut fills completeness telemetry and warnings. Pure helper
+// for unit tests (issue #10).
+func finalizeFilingsOut(out *filingsOut, keywordFilter bool) {
+	out.ReturnedCount = len(out.Rows)
+	out.PageCapHit = out.TotalPages > 0 && out.ScannedPages < out.TotalPages
+	// Truncated: caller hit --limit while more search rows exist, or page cap
+	// left pages unread.
+	out.Truncated = out.PageCapHit || (out.Limit > 0 && out.ReturnedCount >= out.Limit && out.TotalCount > out.ReturnedCount)
+	// Complete relative to the search result set only (not the universe of
+	// filings). Client-side keyword filtering cannot claim completeness unless
+	// every search page was scanned (matches may live on unscanned pages).
+	out.Complete = !out.PageCapHit && !out.Truncated && out.ScannedPages > 0
+	if keywordFilter && out.PageCapHit {
+		out.Complete = false
+		out.Truncated = true
+	}
+
+	// Newest/oldest from returned rows (what the agent sees).
+	for _, r := range out.Rows {
+		if len(r.DisclosedAt) < 10 {
+			continue
+		}
+		day := r.DisclosedAt[:10]
+		if out.NewestDisclosedAt == "" || day > out.NewestDisclosedAt {
+			out.NewestDisclosedAt = day
+		}
+		if out.OldestDisclosedAt == "" || day < out.OldestDisclosedAt {
+			out.OldestDisclosedAt = day
+		}
+	}
+
+	out.Warnings = append([]string{}, filingsSearchCorpusWarning)
+
+	// Freshness gap: newest hit vs --to-date.
+	if out.NewestDisclosedAt != "" && out.ToDate != "" {
+		if newest, err1 := time.Parse("2006-01-02", out.NewestDisclosedAt); err1 == nil {
+			if toD, err2 := time.Parse("01-02-2006", out.ToDate); err2 == nil {
+				gap := int(toD.Sub(newest).Hours() / 24)
+				if gap < 0 {
+					gap = 0
+				}
+				out.FreshnessGapDays = &gap
+				if gap >= freshnessGapWarnDays && out.ReturnedCount > 0 {
+					out.Warnings = append(out.Warnings, fmt.Sprintf(
+						"newest search hit is %d calendar days before --to-date %s (newest=%s); upstream search lag or omitted filings are possible — do not treat this list as complete through --to-date",
+						gap, out.ToDate, out.NewestDisclosedAt))
+				}
+			}
+		}
+	}
+
+	switch {
+	case out.ReturnedCount == 0 && out.PageCapHit:
+		out.Note = fmt.Sprintf("no matches in the %d of %d result pages scanned (--max-scan-pages cap); raise --max-scan-pages or narrow the date window", out.ScannedPages, out.TotalPages)
+		out.Complete = false
+	case out.ReturnedCount == 0:
+		out.Note = "no disclosures matched filters in the full result set (search index only — not proof that no filing exists on the official viewer)"
+		// full scan of empty/non-matching set
+		out.Complete = !out.PageCapHit && out.ScannedPages > 0
+	case out.Truncated && out.ReturnedCount >= out.Limit:
+		if keywordFilter {
+			out.Note = fmt.Sprintf("truncated at --limit %d after scanning search pages (search reports %d total rows before client-side keyword filter)", out.Limit, out.TotalCount)
+		} else {
+			out.Note = fmt.Sprintf("truncated at --limit %d of %d total disclosures reported by search", out.Limit, out.TotalCount)
+		}
+		out.Complete = false
+	case out.PageCapHit:
+		out.Note = fmt.Sprintf("page cap: scanned %d of %d result pages (--max-scan-pages); raise the cap or narrow the window", out.ScannedPages, out.TotalPages)
+		out.Complete = false
+	default:
+		if out.Note == "" {
+			out.Note = fmt.Sprintf("search returned %d row(s); complete=%v relative to announcements/search.ax only", out.ReturnedCount, out.Complete)
+		}
+	}
+}
+
+func newFilingsGetCmd(flags *rootFlags) *cobra.Command {
+	var edgeNo string
+	cmd := &cobra.Command{
+		Use:   "get",
+		Short: "Fetch one filing shell by edge_no via openDiscViewer.do (authoritative when search omits it)",
+		Long: `Direct lookup of a disclosure by edge_no on openDiscViewer.do.
+
+Use this when announcements/search.ax (the filings search path) omits a
+filing that is still openable on the official PSE EDGE viewer. Example
+from issue #10: LODE SEC Form 17-Q filed 2026-07-22 was missing from
+search but present at:
+
+  https://edge.pse.com.ph/openDiscViewer.do?edge_no=2bc053ab3b1339fb64d70b69f0a3140b
+
+This command does not depend on the search index. For full document HTML
+use 'disclosures document' / downloadHtml.do after reading attachment file_ids.`,
+		Example: `  pse-edge-pp-cli filings get --edge-no 2bc053ab3b1339fb64d70b69f0a3140b --json`,
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			edgeNo = strings.TrimSpace(edgeNo)
+			if edgeNo == "" && len(args) == 1 {
+				edgeNo = strings.TrimSpace(args[0])
+			}
+			if edgeNo == "" {
+				if flags.asJSON {
+					_ = printJSONFiltered(cmd.OutOrStdout(), map[string]any{
+						"error": "requires --edge-no",
+						"usage": cmd.CommandPath() + " --edge-no <hash>",
+					}, flags)
+					return usageErr(fmt.Errorf("%q requires --edge-no", cmd.CommandPath()))
+				}
+				return cmd.Help()
+			}
+			if dryRunOK(flags) {
+				return nil
+			}
+			reqCtx, cancel := boundCtx(cmd.Context(), flags)
+			defer cancel()
+			v, err := pseedge.FetchDisclosureViewer(reqCtx, &http.Client{}, edgeNo)
+			if err != nil {
+				return classifyAPIError(err, flags)
+			}
+			out := map[string]any{
+				"edge_no":          v.EdgeNo,
+				"company":          v.Company,
+				"title":            v.Title,
+				"disclosure_date":  v.DisclosureDate,
+				"raw_date":         v.RawDate,
+				"attachments":      v.Attachments,
+				"document_file_id": v.DocumentFileID,
+				"viewer_url":       v.ViewerURL,
+				"source":           v.Source,
+				"as_of":            v.DisclosureDate,
+				"stale":            false,
+				"note":             "direct openDiscViewer.do lookup; independent of announcements/search.ax",
+			}
+			return printJSONFiltered(cmd.OutOrStdout(), out, flags)
+		},
+	}
+	cmd.Flags().StringVar(&edgeNo, "edge-no", "", "Disclosure edge_no hash from a viewer URL or search row")
 	return cmd
 }
 
@@ -259,7 +447,7 @@ func upsertFilings(cmd *cobra.Command, dbPath, symbol string, rows []pseedge.Dis
 	return db.UpsertPSEDisclosures(cmd.Context(), storeRows)
 }
 
-// annotateFilingSymbols backfills the symbol field of --all output rows
+// annotateFilingSymbols backfills the symbol field on --all output rows
 // from the local registry (best-effort; unknown issuers stay blank).
 func annotateFilingSymbols(cmd *cobra.Command, dbPath string, rows []filingRow, fetched []pseedge.Disclosure) {
 	db, err := store.OpenReadOnlyContext(cmd.Context(), dbPath)

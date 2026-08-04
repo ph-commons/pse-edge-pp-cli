@@ -139,6 +139,17 @@ func FetchDisclosureViewer(ctx context.Context, hc *http.Client, edgeNo string) 
 	if edgeNo == "" {
 		return nil, fmt.Errorf("pse-edge openDiscViewer.do: empty edge_no")
 	}
+	// Viewer hashes are lowercase hex (32+ chars). Reject obvious junk early
+	// so we never send path-like or URL-like values as query params.
+	for _, r := range edgeNo {
+		ok := (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')
+		if !ok {
+			return nil, fmt.Errorf("pse-edge openDiscViewer.do: invalid edge_no %q (expected hex hash)", edgeNo)
+		}
+	}
+	if len(edgeNo) < 16 {
+		return nil, fmt.Errorf("pse-edge openDiscViewer.do: invalid edge_no %q (too short)", edgeNo)
+	}
 	u := DisclosureViewerURL + "?edge_no=" + url.QueryEscape(edgeNo)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {

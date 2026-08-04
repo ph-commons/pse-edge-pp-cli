@@ -282,10 +282,13 @@ func finalizeFilingsOut(out *filingsOut, keywordFilter bool) {
 	// left pages unread.
 	out.Truncated = out.PageCapHit || (out.Limit > 0 && out.ReturnedCount >= out.Limit && out.TotalCount > out.ReturnedCount)
 	// Complete relative to the search result set only (not the universe of
-	// filings). keywordFilter forces incomplete when the page cap stopped
-	// scanning before the full result set — matches may live on later pages.
+	// filings). Client-side keyword filtering cannot claim completeness unless
+	// every search page was scanned (matches may live on unscanned pages).
 	out.Complete = !out.PageCapHit && !out.Truncated && out.ScannedPages > 0
-	_ = keywordFilter
+	if keywordFilter && out.PageCapHit {
+		out.Complete = false
+		out.Truncated = true
+	}
 
 	// Newest/oldest from returned rows (what the agent sees).
 	for _, r := range out.Rows {

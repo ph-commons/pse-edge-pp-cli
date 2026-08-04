@@ -69,7 +69,7 @@ type filingsOut struct {
 }
 
 // Standing warning attached to every filings search response (issue #10).
-const filingsSearchCorpusWarning = "announcements/search.ax is not an authoritative complete corpus: filings can exist on openDiscViewer.do that never appear in search results. For a known edge_no use: pse-edge-pp-cli filings get --edge-no <hash> (or disclosures view --edge-no)."
+const filingsSearchCorpusWarning = "announcements/search.ax is not an authoritative complete corpus: filings can exist on openDiscViewer.do that never appear in search results. For a known edge_no use structured lookup: pse-edge-pp-cli filings get --edge-no <hash> --json (disclosures view is raw HTML shell, not the same contract)."
 
 // freshnessGapWarnDays: if the newest hit is this many calendar days before
 // --to-date, surface a freshness-gap warning (upstream lag / missing rows).
@@ -195,7 +195,7 @@ offline joins (the 'deadlines' command reads it).`,
 				page, err := pseedge.FetchDisclosurePage(reqCtx, hc, search, pageNo)
 				cancel()
 				if err != nil {
-					return apiErr(err)
+					return classifyAPIError(err, flags)
 				}
 				out.ScannedPages++
 				out.TotalPages = page.TotalPages
@@ -333,7 +333,11 @@ func finalizeFilingsOut(out *filingsOut, keywordFilter bool) {
 		// full scan of empty/non-matching set
 		out.Complete = !out.PageCapHit && out.ScannedPages > 0
 	case out.Truncated && out.ReturnedCount >= out.Limit:
-		out.Note = fmt.Sprintf("truncated at --limit %d of %d total disclosures reported by search", out.Limit, out.TotalCount)
+		if keywordFilter {
+			out.Note = fmt.Sprintf("truncated at --limit %d after scanning search pages (search reports %d total rows before client-side keyword filter)", out.Limit, out.TotalCount)
+		} else {
+			out.Note = fmt.Sprintf("truncated at --limit %d of %d total disclosures reported by search", out.Limit, out.TotalCount)
+		}
 		out.Complete = false
 	case out.PageCapHit:
 		out.Note = fmt.Sprintf("page cap: scanned %d of %d result pages (--max-scan-pages); raise the cap or narrow the window", out.ScannedPages, out.TotalPages)
@@ -385,7 +389,7 @@ use 'disclosures document' / downloadHtml.do after reading attachment file_ids.`
 			defer cancel()
 			v, err := pseedge.FetchDisclosureViewer(reqCtx, &http.Client{}, edgeNo)
 			if err != nil {
-				return apiErr(err)
+				return classifyAPIError(err, flags)
 			}
 			out := map[string]any{
 				"edge_no":          v.EdgeNo,

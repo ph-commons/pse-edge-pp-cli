@@ -162,8 +162,9 @@ Lists the year's disclosures and feeds the local index behind deadlines; `--keyw
 
 ```bash
 pse-edge-pp-cli filings get --edge-no 2bc053ab3b1339fb64d70b69f0a3140b --json
-# or: pse-edge-pp-cli disclosures view --edge-no <hash>
 ```
+
+(`disclosures view --edge-no` is the generated raw-HTML path; prefer `filings get` when you need structured company/title/attachment fields.)
 
 ### Relative strength question
 

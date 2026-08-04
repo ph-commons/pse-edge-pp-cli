@@ -111,3 +111,37 @@ func TestFilingsGetHelpWired(t *testing.T) {
 		}
 	}
 }
+
+func TestFinalizeFilingsOutKeywordLimitNote(t *testing.T) {
+	rows := make([]filingRow, 5)
+	for i := range rows {
+		rows[i] = filingRow{DisclosedAt: "2026-07-01T00:00:00+08:00"}
+	}
+	out := filingsOut{
+		Rows:         rows,
+		ScannedPages: 1,
+		TotalPages:   1,
+		TotalCount:   50,
+		FromDate:     "01-01-2026",
+		ToDate:       "07-02-2026",
+		Limit:        5,
+		MaxScanPages: 3,
+	}
+	finalizeFilingsOut(&out, true)
+	if !strings.Contains(out.Note, "before client-side keyword filter") {
+		t.Fatalf("note = %q", out.Note)
+	}
+}
+
+func TestFilingsGetAgentKeepsAttachments(t *testing.T) {
+	// compactObjectFields must not strip attachments (primary get payload).
+	raw := []byte(`{"edge_no":"abc","attachments":[{"file_id":"1","label":"x"}],"document_file_id":"2","title":"t"}`)
+	got := compactFields(raw)
+	s := string(got)
+	if !strings.Contains(s, "attachments") || !strings.Contains(s, "file_id") {
+		t.Fatalf("compact stripped attachments: %s", s)
+	}
+	if !strings.Contains(s, "document_file_id") {
+		t.Fatalf("compact stripped document_file_id: %s", s)
+	}
+}

@@ -1356,14 +1356,15 @@ var compactVerboseListFields = map[string]bool{
 }
 
 // compactVerboseObjectFields are metadata fields stripped from single-object
-// responses. "body"/"content"/"html"/"markdown" are intentionally absent:
-// for a `get` command those fields are the primary payload, and stripping
-// them under `--agent`/`--compact` silently emits a useless envelope.
-// Use `--select` to drop them explicitly.
+// responses. "body"/"content"/"html"/"markdown"/"attachments" are intentionally
+// absent: for a `get` command those fields are the primary payload (e.g.
+// filings get --edge-no attachment file_ids), and stripping them under
+// `--agent`/`--compact` silently emits a useless envelope. Use `--select` to
+// drop them explicitly. List-row compact still strips attachments via
+// compactVerboseListFields.
 var compactVerboseObjectFields = map[string]bool{
 	"description": true,
 	"comments":    true,
-	"attachments": true,
 }
 
 // compactFields keeps only the most important fields for agent consumption.

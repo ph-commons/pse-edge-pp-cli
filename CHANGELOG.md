@@ -13,47 +13,44 @@ automation for this independent repo (that rule applies only when publishing
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-08-05
+
+### Added
+
+- `filings get --edge-no` — direct `openDiscViewer.do` lookup when search omits a known disclosure ([#10](https://github.com/ngpestelos/pse-edge-pp-cli/issues/10), [#15](https://github.com/ngpestelos/pse-edge-pp-cli/pull/15)).
+- Local-store export for downstream pipelines: `export eod`, `export index`, `export companies-local` with versioned per-row `contract` ids (`pse-edge-export-*-v1`) ([#9](https://github.com/ngpestelos/pse-edge-pp-cli/issues/9), [#18](https://github.com/ngpestelos/pse-edge-pp-cli/pull/18)).
+- Downstream integration guide: `docs/downstream-integration.md` ([#9](https://github.com/ngpestelos/pse-edge-pp-cli/issues/9)).
+- Security review notes: `docs/security-review-20260805.md` ([#13](https://github.com/ngpestelos/pse-edge-pp-cli/issues/13), [#17](https://github.com/ngpestelos/pse-edge-pp-cli/pull/17)).
+- `which` indexes `filings` and `export` for capability routing ([#16](https://github.com/ngpestelos/pse-edge-pp-cli/pull/16)).
+
+### Changed
+
+- `filings` JSON exposes search honesty fields: `complete` (search set only), `truncated`, `page_cap_hit`, `freshness_gap_days`, standing `warnings` that `announcements/search.ax` is not an authoritative complete corpus ([#10](https://github.com/ngpestelos/pse-edge-pp-cli/issues/10)).
+- MCP HTTP default bind is loopback-only (`127.0.0.1:7777`); warn on non-loopback binds (no auth) ([#13](https://github.com/ngpestelos/pse-edge-pp-cli/issues/13)).
+
 ### Security
 
 - `scripts/install.sh` verifies prebuilt release tarballs against the release `checksums.txt` (SHA-256) before extract; refuse install on missing entry or mismatch ([#13](https://github.com/ngpestelos/pse-edge-pp-cli/issues/13)).
 - `filings` / `filings get` HTTP clients set an explicit 60s timeout ([#13](https://github.com/ngpestelos/pse-edge-pp-cli/issues/13)).
-- MCP HTTP default bind is loopback-only (`127.0.0.1:7777`); warn on non-loopback binds (no auth) ([#13](https://github.com/ngpestelos/pse-edge-pp-cli/issues/13)).
 - SQLite DSN builder rejects path URI metacharacters that could override `mode=ro`; MCP blocks `--db` ([#13](https://github.com/ngpestelos/pse-edge-pp-cli/issues/13)).
 - Cross-host HTTP redirects drop `Config.Headers` keys, not only `Authorization` ([#13](https://github.com/ngpestelos/pse-edge-pp-cli/issues/13)).
-- Security review notes: `docs/security-review-20260805.md` ([#13](https://github.com/ngpestelos/pse-edge-pp-cli/issues/13)).
-
-
-### Added
-
-- Local-store export resources for downstream pipelines: `export eod`, `export index`, `export companies-local` with versioned per-row `contract` ids (`pse-edge-export-*-v1`) ([#9](https://github.com/ngpestelos/pse-edge-pp-cli/issues/9)).
-- Downstream integration guide: `docs/downstream-integration.md` ([#9](https://github.com/ngpestelos/pse-edge-pp-cli/issues/9)).
-- `filings get --edge-no` — direct `openDiscViewer.do` lookup for a known disclosure hash when search omits it ([#10](https://github.com/ngpestelos/pse-edge-pp-cli/issues/10)).
-
-### Changed
-
-- `filings` JSON now exposes search telemetry and honesty fields: `returned_count`, `from_date`, `to_date`, `company_id`, `limit`, `max_scan_pages`, `truncated`, `page_cap_hit`, `complete` (relative to the search result set only), `newest_disclosed_at` / `oldest_disclosed_at`, `freshness_gap_days`, and standing `warnings` that search is not an authoritative complete corpus ([#10](https://github.com/ngpestelos/pse-edge-pp-cli/issues/10)).
 
 ## [0.1.2] - 2026-08-04
 
 ### Fixed
 
-- Parse PSE Edge `stockData.do` down-day `Change(% Change)` cells that use U+00A0
-  and interior percent whitespace; require `up`/`down` prefix so an unmatched
-  direction word cannot silently invert sign
-  ([#8](https://github.com/ngpestelos/pse-edge-pp-cli/issues/8),
+- Parse PSE Edge `stockData.do` down-day `Change(% Change)` cells that use U+00A0 interior percent whitespace; require `up`/`down` prefix so an unmatched direction word cannot silently invert sign ([#8](https://github.com/ngpestelos/pse-edge-pp-cli/issues/8),
   [#14](https://github.com/ngpestelos/pse-edge-pp-cli/pull/14)).
 
 ### Changed
 
-- Bump `golang.org/x/net` 0.55.0 → 0.57.0
-  ([#12](https://github.com/ngpestelos/pse-edge-pp-cli/pull/12)).
+- Bump `golang.org/x/net` 0.55.0 → 0.57.0 ([#12](https://github.com/ngpestelos/pse-edge-pp-cli/pull/12)).
 
 ## [0.1.1] - 2026-07-27
 
 ### Changed
 
-- Five-step densify and parallel quote path; `resolveVersion` for non-dev
-  installs (see release notes / git history).
+- Five-step densify parallel quote path; `resolveVersion` for non-dev installs (see release notes / git history).
 
 ## [0.1.0] - 2026-07-27
 
@@ -62,7 +59,8 @@ automation for this independent repo (that rule applies only when publishing
 - Initial public release: agent-native PSE Edge CLI (quotes, filings, local
   history, MCP).
 
-[Unreleased]: https://github.com/ngpestelos/pse-edge-pp-cli/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/ngpestelos/pse-edge-pp-cli/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/ngpestelos/pse-edge-pp-cli/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/ngpestelos/pse-edge-pp-cli/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/ngpestelos/pse-edge-pp-cli/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/ngpestelos/pse-edge-pp-cli/releases/tag/v0.1.0

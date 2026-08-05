@@ -177,7 +177,10 @@ offline joins (the 'deadlines' command reads it).`,
 			}
 
 			keyword := strings.ToLower(strings.TrimSpace(keywordFlag))
-			hc := &http.Client{}
+			// Explicit timeout: boundCtx cancels the request, but a bare
+			// Client without Timeout can still strand idle connections if
+			// the caller ever omits a deadline (issue #13).
+			hc := &http.Client{Timeout: 60 * time.Second}
 			out := filingsOut{
 				Rows:         make([]filingRow, 0, limitFlag),
 				FromDate:     fromDateFlag,
@@ -387,7 +390,7 @@ use 'disclosures document' / downloadHtml.do after reading attachment file_ids.`
 			}
 			reqCtx, cancel := boundCtx(cmd.Context(), flags)
 			defer cancel()
-			v, err := pseedge.FetchDisclosureViewer(reqCtx, &http.Client{}, edgeNo)
+			v, err := pseedge.FetchDisclosureViewer(reqCtx, &http.Client{Timeout: 60 * time.Second}, edgeNo)
 			if err != nil {
 				return classifyAPIError(err, flags)
 			}

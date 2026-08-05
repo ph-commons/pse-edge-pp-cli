@@ -25,6 +25,8 @@ automation for this independent repo (that rule applies only when publishing
 
 ### Added
 
+- Local-store export resources for downstream pipelines: `export eod`, `export index`, `export companies-local` with versioned per-row `contract` ids (`pse-edge-export-*-v1`) ([#9](https://github.com/ngpestelos/pse-edge-pp-cli/issues/9)).
+- Downstream integration guide: `docs/downstream-integration.md` ([#9](https://github.com/ngpestelos/pse-edge-pp-cli/issues/9)).
 - `filings get --edge-no` — direct `openDiscViewer.do` lookup for a known disclosure hash when search omits it ([#10](https://github.com/ngpestelos/pse-edge-pp-cli/issues/10)).
 
 ### Changed

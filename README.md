@@ -152,6 +152,15 @@ pse-edge-pp-cli deadlines AT --json
 
 Computed 17-Q due dates joined to actual filings — filed, pending, or overdue.
 
+### Downstream market export (local store)
+
+```bash
+pse-edge-pp-cli export eod --from 2025-01-01 --to 2026-07-27 --format jsonl -o eod.jsonl
+pse-edge-pp-cli export index --from 2025-01-01 --format jsonl
+```
+
+Versioned JSONL contracts for private analytics pipelines (`pse-edge-export-eod-v1` / `pse-edge-export-index-v1`). Prefer this over reading `data.db` directly — see [docs/downstream-integration.md](docs/downstream-integration.md).
+
 ### Disclosure sweep with client-side keyword
 
 ```bash

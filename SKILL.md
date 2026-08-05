@@ -70,6 +70,7 @@ MCP: `go install …/pse-edge-pp-mcp@latest` → `claude mcp add pse-edge-pp-mcp
 | Breadth series | `pse-edge-pp-cli breadth --since 30d --json` |
 | Filings (search index) | `pse-edge-pp-cli filings AT --json` |
 | Filing by edge_no (viewer) | `pse-edge-pp-cli filings get --edge-no <hash> --json` |
+| Export local EOD/index | `pse-edge-pp-cli export eod\|index --from YYYY-MM-DD --format jsonl` |
 | 17-Q/17-A deadlines | `pse-edge-pp-cli deadlines AT --json` |
 | Typed financials | `pse-edge-pp-cli financials AT --json` |
 | Stale local data | `pse-edge-pp-cli stale --json` |

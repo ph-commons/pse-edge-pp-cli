@@ -1,12 +1,15 @@
 // Copyright 2026 Nestor G Pestelos Jr and contributors. Licensed under Apache-2.0. See LICENSE.
-
+//
 // Hand-authored PSE Edge domain tables. Lazily created (CREATE TABLE IF
 // NOT EXISTS) by the commands that touch them, so the generated migrate()
 // path and StoreSchemaVersion stay untouched — older binaries opening the
 // same database simply ignore these tables.
 //
-// Schema is the BUILD-CONTEXT red-team contract:
-//   - pse_companies       registry (cmpy_id PK, security_id, symbol UNIQUE)
+// Schema is the BUILD-CONTEXT red-team contract for THIS REPO's commands
+// (history/drift/breadth/movers/deadlines). It is NOT a public downstream
+// ABI — external pipelines should use `export eod|index|companies-local`
+// (see docs/downstream-integration.md, issue #9). Internal tables:
+//   - pse_companies      registry (cmpy_id PK, security_id, symbol UNIQUE)
 //   - pse_eod_prices      final per-session bars, PK(symbol, trading_date)
 //   - pse_index_snapshots per-index per-session readings + breadth fields
 //   - pse_disclosures     disclosure headers keyed by edge_no

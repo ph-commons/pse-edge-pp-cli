@@ -21,7 +21,7 @@ import (
 // guidance that production agents need a remote option.
 
 const (
-	defaultHTTPAddr = ":7777"
+	defaultHTTPAddr = "127.0.0.1:7777"
 )
 
 func main() {
@@ -37,7 +37,7 @@ func main() {
 	mcptools.RegisterTools(s)
 
 	transport := flag.String("transport", defaultTransport(), "MCP transport: stdio | http")
-	addr := flag.String("addr", defaultHTTPAddr, "bind address for http transport (host:port or :port)")
+	addr := flag.String("addr", defaultHTTPAddr, "bind address for http transport (default 127.0.0.1:7777 loopback-only; use host:port deliberately for LAN — no auth)")
 	flag.Parse()
 
 	switch strings.ToLower(*transport) {
@@ -47,8 +47,11 @@ func main() {
 			os.Exit(1)
 		}
 	case "http":
+		if !isLoopbackAddr(*addr) {
+			fmt.Fprintf(os.Stderr, "warning: MCP HTTP bind %q is not loopback and has no authentication — any reachable client can invoke tools against live PSE Edge and the local store\n", *addr)
+		}
 		httpSrv := server.NewStreamableHTTPServer(s)
-		fmt.Fprintf(os.Stderr, "pse-edge-pp-mcp serving MCP over streamable HTTP at %s\n", *addr)
+		fmt.Fprintf(os.Stderr, "pse-edge-pp-mcp serving MCP over streamable HTTP at %s (no auth; prefer stdio for local agents)\n", *addr)
 		if err := httpSrv.Start(*addr); err != nil {
 			fmt.Fprintf(os.Stderr, "MCP server error: %v\n", err)
 			os.Exit(1)
@@ -63,6 +66,43 @@ func main() {
 // to "stdio" so running the binary with no args keeps today's behavior.
 // Container-hosted agents can pin the transport via env without a flag, which
 // matches how hosted-agent process supervisors typically pass configuration.
+// isLoopbackAddr reports whether addr is empty host, localhost, or 127.0.0.1/::1.
+// Bare ":port" binds all interfaces and is NOT loopback.
+func isLoopbackAddr(addr string) bool {
+	host, _, err := splitHostPortLoose(addr)
+	if err != nil {
+		// ":7777" form — all interfaces
+		if strings.HasPrefix(addr, ":") {
+			return false
+		}
+		host = addr
+	}
+	h := strings.ToLower(strings.TrimSpace(host))
+	return h == "127.0.0.1" || h == "localhost" || h == "::1" || h == "[::1]"
+}
+
+func splitHostPortLoose(addr string) (host, port string, err error) {
+	// net.SplitHostPort needs brackets for IPv6; keep dependency-free.
+	if strings.HasPrefix(addr, "[") {
+		end := strings.Index(addr, "]")
+		if end < 0 {
+			return "", "", fmt.Errorf("bad addr")
+		}
+		host = addr[:end+1]
+		rest := addr[end+1:]
+		if strings.HasPrefix(rest, ":") {
+			return host, rest[1:], nil
+		}
+		return host, "", nil
+	}
+	i := strings.LastIndex(addr, ":")
+	if i < 0 {
+		return addr, "", fmt.Errorf("no port")
+	}
+	// Distinguish host:port from :port
+	return addr[:i], addr[i+1:], nil
+}
+
 func defaultTransport() string {
 	if t := os.Getenv("PP_MCP_TRANSPORT"); t != "" {
 		return t

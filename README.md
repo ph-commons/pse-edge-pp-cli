@@ -24,6 +24,8 @@ Or use the one-shot installer (idempotent; prefers the prebuilt GitHub release s
 curl -fsSL https://raw.githubusercontent.com/ngpestelos/pse-edge-pp-cli/main/scripts/install.sh | bash
 ```
 
+The installer prefers a GitHub **release tarball** and verifies its **SHA-256** against that release’s `checksums.txt` before extracting into `~/.local/bin`. It falls back to `go install` only if the prebuilt path fails. Review notes: [`docs/security-review-20260805.md`](docs/security-review-20260805.md).
+
 An MCP server binary is also available for IDE/desktop agents:
 
 ```bash

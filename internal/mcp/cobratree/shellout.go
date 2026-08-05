@@ -199,6 +199,7 @@ var blockedRootFlags = map[string]bool{
 	"base-url": true,
 	"client":   true,
 	"config":   true,
+	"db":       true, // arbitrary store path + DSN injection surface (issue #13)
 	"deliver":  true,
 	"home":     true,
 	"insecure": true,

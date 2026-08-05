@@ -93,7 +93,7 @@ func TestCliArgsFromMCP_BlocksRootFlags(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("cliArgsFromMCP dropped/kept wrong keys: got %v, want %v", got, want)
 	}
-	for _, blocked := range []string{"--base-url", "--client", "--config", "--deliver", "--home", "--insecure", "--profile", "--token", "--args"} {
+	for _, blocked := range []string{"--base-url", "--client", "--config", "--db", "--deliver", "--home", "--insecure", "--profile", "--token", "--args"} {
 		for _, tok := range got {
 			if tok == blocked {
 				t.Errorf("blocked flag %q leaked through cliArgsFromMCP", blocked)

@@ -281,6 +281,10 @@ func CleanPathOverride(raw string) (string, bool) {
 	if expanded == "" || !filepath.IsAbs(expanded) {
 		return "", false
 	}
+	// Reject SQLite URI metacharacters so path-based DSNs cannot inject query params (issue #13).
+	if strings.ContainsAny(expanded, "?#&") || strings.HasPrefix(strings.ToLower(expanded), "file:") {
+		return "", false
+	}
 	return filepath.Clean(expanded), true
 }
 

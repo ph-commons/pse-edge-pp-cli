@@ -9,10 +9,10 @@
 
 | Severity | Count | Disposition |
 |----------|------:|-------------|
-| CRITICAL | 0 | — |
-| HIGH | 1 | Fixed: install.sh SHA-256 verify against release `checksums.txt` |
-| MEDIUM | 4 | Documented; 1 partial fix (HTTP client timeouts on filings) |
-| LOW / INFO | 5 | Documented; no code change required for acceptance |
+| CRITICAL | 1 | Fixed: MCP HTTP default bind loopback-only (`127.0.0.1:7777`) + non-loopback warning |
+| HIGH | 3 | Fixed: install SHA-256; SQLite DSN path injection; MCP blocks `--db` |
+| MEDIUM | several | Filings timeouts fixed; webhook SSRF / rate-limit defaults documented residual |
+| LOW / INFO | several | Documented residual |
 
 `govulncheck ./...` (20260805): **No vulnerabilities found.**
 
@@ -21,6 +21,25 @@ Threat model: personal/agent workstation CLI for public PSE market HTML/JSON. No
 ---
 
 ## 1. Supply chain / install
+
+
+### C1 — MCP streamable HTTP bound all interfaces without auth — **FIXED**
+
+**Before:** `cmd/pse-edge-pp-mcp` default `--addr :7777` (all interfaces), no bearer/mTLS.
+
+**Fix:** Default `127.0.0.1:7777`; warn loudly if bind is non-loopback (still no auth — prefer stdio).
+
+### H2 — SQLite DSN path URI injection — **FIXED**
+
+**Before:** `file:` + raw `dbPath` + `?mode=ro&…` allowed a path containing `?mode=rwc` to keep the first `mode=` and defeat read-only.
+
+**Fix:** `validateDBPath` rejects `?#&` and `file:` prefix; `sqliteDSN` builds escaped `file:` URIs; `CleanPathOverride` rejects the same metacharacters.
+
+### H3 — MCP shell-out allowed `--db` — **FIXED**
+
+**Before:** `blockedRootFlags` omitted `db`, so MCP could retarget the store path (and combine with H2).
+
+**Fix:** `db` added to `blockedRootFlags` (+ tests).
 
 ### H1 — Prebuilt install did not verify release checksums — **FIXED**
 
@@ -142,7 +161,10 @@ Much of MCP/CLI is Printing Press generated. Security properties depend on gener
 ## Acceptance checklist (issue #13)
 
 - [x] Review notes in-repo (`docs/security-review-20260805.md`) + linked from issue  
-- [x] HIGH install checksum gap fixed  
+- [x] CRITICAL MCP HTTP default bind fixed (loopback)
+- [x] HIGH install checksum gap fixed
+- [x] HIGH SQLite DSN path injection fixed
+- [x] HIGH MCP `--db` blocked  
 - [x] Install script + MCP paths covered explicitly  
 - [x] MEDIUM residuals documented with owners / product choice  
 - [ ] Optional follow-ups (file as separate issues if desired):

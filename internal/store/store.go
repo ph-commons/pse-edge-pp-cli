@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -83,6 +84,49 @@ type Store struct {
 // Open opens or creates the SQLite store at dbPath using the background
 // context. Prefer OpenWithContext from a Cobra command so SIGINT during
 // a slow migration interrupts the open instead of stranding the caller.
+
+// validateDBPath rejects path content that can inject SQLite URI query
+// parameters when the DSN is built as file:<path>?<query>. A path like
+// "/tmp/x.db?mode=rwc" would otherwise keep the first mode= and defeat
+// mode=ro on OpenReadOnly (issue #13).
+func validateDBPath(dbPath string) error {
+	if dbPath == "" {
+		return fmt.Errorf("database path is empty")
+	}
+	if strings.ContainsAny(dbPath, "?#&") {
+		return fmt.Errorf("database path must not contain URI metacharacters (?, #, &): %q", dbPath)
+	}
+	lower := strings.ToLower(dbPath)
+	if strings.HasPrefix(lower, "file:") {
+		return fmt.Errorf("database path must not use a file: URI prefix: %q", dbPath)
+	}
+	return nil
+}
+
+// sqliteDSN builds a modernc.org/sqlite DSN: file:<escaped-path>?<query>.
+// query should not start with '?'. Path is slash-normalized and path-escaped
+// so spaces and special characters cannot break out of the path segment.
+func sqliteDSN(dbPath, query string) (string, error) {
+	if err := validateDBPath(dbPath); err != nil {
+		return "", err
+	}
+	// Absolute filesystem path → URI path form. Keep leading slash.
+	slash := filepath.ToSlash(dbPath)
+	// url.PathEscape encodes spaces etc. but also encodes '/'. Escape per segment.
+	parts := strings.Split(slash, "/")
+	for i, p := range parts {
+		if p == "" {
+			continue
+		}
+		parts[i] = url.PathEscape(p)
+	}
+	esc := strings.Join(parts, "/")
+	if query == "" {
+		return "file:" + esc, nil
+	}
+	return "file:" + esc + "?" + query, nil
+}
+
 func Open(dbPath string) (*Store, error) {
 	return OpenWithContext(context.Background(), dbPath)
 }
@@ -117,7 +161,10 @@ func OpenReadOnly(dbPath string) (*Store, error) {
 // OpenReadOnlyContext is OpenReadOnly with a caller-supplied context honored by
 // the driver-init SQLITE_BUSY retry.
 func OpenReadOnlyContext(ctx context.Context, dbPath string) (*Store, error) {
-	dsn := "file:" + dbPath + "?mode=ro&_pragma=busy_timeout(5000)&_pragma=foreign_keys(ON)&_pragma=temp_store(MEMORY)&_pragma=mmap_size(268435456)"
+	dsn, err := sqliteDSN(dbPath, "mode=ro&_pragma=busy_timeout(5000)&_pragma=foreign_keys(ON)&_pragma=temp_store(MEMORY)&_pragma=mmap_size(268435456)")
+	if err != nil {
+		return nil, err
+	}
 	if err := ensureSQLiteDriverInitialized(ctx, dsn); err != nil {
 		return nil, err
 	}
@@ -150,7 +197,10 @@ func OpenWithContext(ctx context.Context, dbPath string) (*Store, error) {
 	// wrapper around Conn() acquisition below; both layers are needed
 	// because modernc.org/sqlite's connect-time conversion is not fully
 	// covered by the statement-level busy handler alone.
-	dsn := dbPath + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)&_pragma=temp_store(MEMORY)&_pragma=mmap_size(268435456)"
+	dsn, err := sqliteDSN(dbPath, "_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)&_pragma=temp_store(MEMORY)&_pragma=mmap_size(268435456)")
+	if err != nil {
+		return nil, err
+	}
 	if err := ensureSQLiteDriverInitialized(ctx, dsn); err != nil {
 		return nil, err
 	}

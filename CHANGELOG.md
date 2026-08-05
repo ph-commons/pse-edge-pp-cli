@@ -17,7 +17,11 @@ automation for this independent repo (that rule applies only when publishing
 
 - `scripts/install.sh` verifies prebuilt release tarballs against the release `checksums.txt` (SHA-256) before extract; refuse install on missing entry or mismatch ([#13](https://github.com/ngpestelos/pse-edge-pp-cli/issues/13)).
 - `filings` / `filings get` HTTP clients set an explicit 60s timeout ([#13](https://github.com/ngpestelos/pse-edge-pp-cli/issues/13)).
+- MCP HTTP default bind is loopback-only (`127.0.0.1:7777`); warn on non-loopback binds (no auth) ([#13](https://github.com/ngpestelos/pse-edge-pp-cli/issues/13)).
+- SQLite DSN builder rejects path URI metacharacters that could override `mode=ro`; MCP blocks `--db` ([#13](https://github.com/ngpestelos/pse-edge-pp-cli/issues/13)).
+- Cross-host HTTP redirects drop `Config.Headers` keys, not only `Authorization` ([#13](https://github.com/ngpestelos/pse-edge-pp-cli/issues/13)).
 - Security review notes: `docs/security-review-20260805.md` ([#13](https://github.com/ngpestelos/pse-edge-pp-cli/issues/13)).
+
 
 ### Added
 

@@ -13,9 +13,17 @@ automation for this independent repo (that rule applies only when publishing
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-08-18
+
 ### Security
 
-- Require Go 1.26.6 (stdlib vulns GO-2026-6090 / 6089 / 5972 / 5026 on 1.26.5). Pin CI and release `setup-go` to `1.26.6` so Dependabot PRs can pass `govulncheck`.
+- Require Go 1.26.6 (stdlib vulns GO-2026-6090 / 6089 / 5972 / 5026 on 1.26.5). Pin CI and release `setup-go` to `1.26.6` so Dependabot PRs can pass `govulncheck` ([#22](https://github.com/ngpestelos/pse-edge-pp-cli/pull/22)).
+
+### Changed
+
+- Bump `github.com/mark3labs/mcp-go` 0.57.0 → 0.58.0 ([#20](https://github.com/ngpestelos/pse-edge-pp-cli/pull/20)).
+- Bump `golang.org/x/net` 0.57.0 → 0.58.0 ([#21](https://github.com/ngpestelos/pse-edge-pp-cli/pull/21)).
+- Bump `modernc.org/sqlite` 1.55.0 → 1.56.0 ([#19](https://github.com/ngpestelos/pse-edge-pp-cli/pull/19)).
 
 ## [0.1.3] - 2026-08-05
 
@@ -63,7 +71,8 @@ automation for this independent repo (that rule applies only when publishing
 - Initial public release: agent-native PSE Edge CLI (quotes, filings, local
   history, MCP).
 
-[Unreleased]: https://github.com/ngpestelos/pse-edge-pp-cli/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/ngpestelos/pse-edge-pp-cli/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/ngpestelos/pse-edge-pp-cli/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/ngpestelos/pse-edge-pp-cli/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/ngpestelos/pse-edge-pp-cli/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/ngpestelos/pse-edge-pp-cli/compare/v0.1.0...v0.1.1

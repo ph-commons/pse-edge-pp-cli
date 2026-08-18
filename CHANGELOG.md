@@ -13,9 +13,11 @@ automation for this independent repo (that rule applies only when publishing
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-08-18
+
 ### Changed
 
-- Move repo and Go module to `ph-commons/pse-edge-pp-cli` (User-Agent strings unchanged).
+- Move repo and Go module to [`ph-commons/pse-edge-pp-cli`](https://github.com/ph-commons/pse-edge-pp-cli) (User-Agent strings unchanged).
 
 ## [0.1.4] - 2026-08-18
 
@@ -75,8 +77,9 @@ automation for this independent repo (that rule applies only when publishing
 - Initial public release: agent-native PSE Edge CLI (quotes, filings, local
   history, MCP).
 
-[Unreleased]: https://github.com/ngpestelos/pse-edge-pp-cli/compare/v0.1.4...HEAD
-[0.1.4]: https://github.com/ngpestelos/pse-edge-pp-cli/compare/v0.1.3...v0.1.4
+[Unreleased]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.4...v0.1.5
+[0.1.4]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/ngpestelos/pse-edge-pp-cli/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/ngpestelos/pse-edge-pp-cli/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/ngpestelos/pse-edge-pp-cli/compare/v0.1.0...v0.1.1

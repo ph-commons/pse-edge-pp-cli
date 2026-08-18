@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/cliutil"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/cliutil"
 )
 
 // The invocation journal records one entry per CLI invocation in dated

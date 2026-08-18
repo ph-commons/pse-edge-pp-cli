@@ -17,9 +17,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/cli"
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/cliutil"
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/learn"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/cli"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/cliutil"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/learn"
 )
 
 // withJournalHome isolates a test in a temp HOME with every journal

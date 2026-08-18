@@ -6,7 +6,7 @@ package main
 import (
 	"os"
 
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/cli"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/cli"
 )
 
 func main() {

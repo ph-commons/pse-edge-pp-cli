@@ -14,7 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/config"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/config"
 )
 
 func TestTruncateBody(t *testing.T) {

@@ -20,8 +20,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/learn"
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/store"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/learn"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/store"
 )
 
 // synthesisFamily is the query family every scenario teaches under.

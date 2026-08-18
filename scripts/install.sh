@@ -2,7 +2,7 @@
 #
 # pse-edge-pp-cli fleet installer — idempotent, macOS + Linux.
 #
-#   curl -fsSL https://raw.githubusercontent.com/ngpestelos/pse-edge-pp-cli/main/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/ph-commons/pse-edge-pp-cli/main/scripts/install.sh | bash
 #
 # Prefers a prebuilt GitHub release (no local modernc.org/sqlite compile).
 # Verifies the tarball against the release checksums.txt (sha256) before extract.
@@ -11,10 +11,10 @@
 # also wires the pp-pse-edge skill; skipped cleanly elsewhere.
 set -euo pipefail
 
-MODULE="github.com/ngpestelos/pse-edge-pp-cli"
+MODULE="github.com/ph-commons/pse-edge-pp-cli"
 BIN="pse-edge-pp-cli"
 GOBIN_DIR="${GOBIN:-$HOME/.local/bin}"
-OWNER_REPO="ngpestelos/pse-edge-pp-cli"
+OWNER_REPO="ph-commons/pse-edge-pp-cli"
 
 log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mwarn:\033[0m %s\n' "$*" >&2; }

@@ -17,9 +17,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/client"
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/psecal"
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/pseedge"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/client"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/psecal"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/pseedge"
 	"github.com/spf13/cobra"
 )
 

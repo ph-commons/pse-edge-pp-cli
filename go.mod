@@ -1,4 +1,4 @@
-module github.com/ngpestelos/pse-edge-pp-cli
+module github.com/ph-commons/pse-edge-pp-cli
 
 go 1.26.6
 

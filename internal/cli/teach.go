@@ -27,12 +27,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/cliutil"
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/learn"
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/learn/entities"
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/learn/lookups"
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/learn/patterns"
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/store"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/cliutil"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/learn"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/learn/entities"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/learn/lookups"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/learn/patterns"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/store"
 )
 
 // noLearnEnvVar is the environment variable that disables the learning

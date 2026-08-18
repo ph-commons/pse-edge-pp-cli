@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/store"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/store"
 )
 
 // isNilOrEmpty checks whether a JSON search hit is only an empty shell.

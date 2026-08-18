@@ -26,7 +26,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/cliutil"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/cliutil"
 )
 
 // disclosureLimiter paces the form-POST fetcher (which bypasses the generated

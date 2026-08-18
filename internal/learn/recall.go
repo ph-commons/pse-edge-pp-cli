@@ -15,9 +15,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/learn/entities"
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/learn/lookups"
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/learn/patterns"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/learn/entities"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/learn/lookups"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/learn/patterns"
 )
 
 // Default thresholds. Keep in sync with the documented contract in

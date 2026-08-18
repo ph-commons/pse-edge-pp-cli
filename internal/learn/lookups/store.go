@@ -12,7 +12,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/cliutil"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/cliutil"
 )
 
 // LookupRow is the canonical seed-row shape used by both the seeds

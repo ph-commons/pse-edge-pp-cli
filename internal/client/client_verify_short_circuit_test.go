@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/config"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/config"
 )
 
 // recordingRoundTripper counts how many times its RoundTrip method is

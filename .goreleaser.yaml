@@ -9,7 +9,7 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w -X github.com/ngpestelos/pse-edge-pp-cli/internal/cli.version={{ .Version }}
+      - -s -w -X github.com/ph-commons/pse-edge-pp-cli/internal/cli.version={{ .Version }}
     targets:
       - darwin_amd64
       - darwin_arm64
@@ -23,7 +23,7 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w -X github.com/ngpestelos/pse-edge-pp-cli/internal/cli.version={{ .Version }}
+      - -s -w -X github.com/ph-commons/pse-edge-pp-cli/internal/cli.version={{ .Version }}
     targets:
       - darwin_amd64
       - darwin_arm64

@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/mark3labs/mcp-go/server"
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/cli"
-	mcptools "github.com/ngpestelos/pse-edge-pp-cli/internal/mcp"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/cli"
+	mcptools "github.com/ph-commons/pse-edge-pp-cli/internal/mcp"
 )
 
 // Transport selection order: --transport flag, then PP_MCP_TRANSPORT env,

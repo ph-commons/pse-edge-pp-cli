@@ -13,6 +13,10 @@ automation for this independent repo (that rule applies only when publishing
 
 ## [Unreleased]
 
+### Changed
+
+- Move repo and Go module to `ph-commons/pse-edge-pp-cli` (User-Agent strings unchanged).
+
 ## [0.1.4] - 2026-08-18
 
 ### Security

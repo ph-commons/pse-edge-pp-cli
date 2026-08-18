@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/psecal"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/psecal"
 )
 
 // TestNovelHistoryHelpWires smoke-tests that the history command

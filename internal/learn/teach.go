@@ -19,7 +19,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/learn/entities"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/learn/entities"
 )
 
 // Warning is one teach-time validation finding. The shape is the JSON

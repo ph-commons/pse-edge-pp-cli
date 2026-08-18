@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/learn/lookups"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/learn/lookups"
 )
 
 // DefaultJaccardMin matches the recall-side floor. Applying the same

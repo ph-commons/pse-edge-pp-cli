@@ -13,7 +13,7 @@ import (
 
 	mcplib "github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/mcp/bound"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/mcp/bound"
 )
 
 func boundedToolResultError(message string) *mcplib.CallToolResult {

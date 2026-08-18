@@ -13,7 +13,7 @@ Created by [Nestor G Pestelos Jr](https://npestelos.com).
 Requires [Go 1.26.6 or newer](https://go.dev/dl/):
 
 ```bash
-go install github.com/ngpestelos/pse-edge-pp-cli/cmd/pse-edge-pp-cli@latest
+go install github.com/ph-commons/pse-edge-pp-cli/cmd/pse-edge-pp-cli@latest
 ```
 
 The binary installs to `$(go env GOPATH)/bin` (usually `~/go/bin`); make sure that's on your `PATH`.
@@ -21,7 +21,7 @@ The binary installs to `$(go env GOPATH)/bin` (usually `~/go/bin`); make sure th
 Or use the one-shot installer (idempotent; prefers the prebuilt GitHub release so machines never compile `modernc.org/sqlite`; falls back to `go install`; installs to `~/.local/bin`):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ngpestelos/pse-edge-pp-cli/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ph-commons/pse-edge-pp-cli/main/scripts/install.sh | bash
 ```
 
 The installer prefers a GitHub **release tarball** and verifies its **SHA-256** against that release’s `checksums.txt` before extracting into `~/.local/bin`. It falls back to `go install` only if the prebuilt path fails. Review notes: [`docs/security-review-20260805.md`](docs/security-review-20260805.md).
@@ -29,7 +29,7 @@ The installer prefers a GitHub **release tarball** and verifies its **SHA-256** 
 An MCP server binary is also available for IDE/desktop agents:
 
 ```bash
-go install github.com/ngpestelos/pse-edge-pp-cli/cmd/pse-edge-pp-mcp@latest
+go install github.com/ph-commons/pse-edge-pp-cli/cmd/pse-edge-pp-mcp@latest
 ```
 
 Manual Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):

@@ -20,8 +20,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/psecal"
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/pseedge"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/psecal"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/pseedge"
 )
 
 const financialReportsPath = "/companyPage/financial_reports_view.do"

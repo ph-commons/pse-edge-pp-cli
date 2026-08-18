@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ngpestelos/pse-edge-pp-cli/internal/cliutil"
+	"github.com/ph-commons/pse-edge-pp-cli/internal/cliutil"
 )
 
 // DisclosureViewerURL is the human-facing filing shell (same path as ViewerURL).

@@ -13,6 +13,10 @@ automation for this independent repo (that rule applies only when publishing
 
 ## [Unreleased]
 
+### Security
+
+- Require Go 1.26.6 (stdlib vulns GO-2026-6090 / 6089 / 5972 / 5026 on 1.26.5). Pin CI and release `setup-go` to `1.26.6` so Dependabot PRs can pass `govulncheck`.
+
 ## [0.1.3] - 2026-08-05
 
 ### Added

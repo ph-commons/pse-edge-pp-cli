@@ -15,7 +15,7 @@ automation for this independent repo (that rule applies only when publishing
 
 ### Security
 
-- Release assets are now signed keylessly with cosign (sigstore), bound to the GitHub Actions OIDC identity of the `release.yml` workflow at `refs/tags/v*` (issue #26). `install.sh` verifies the checksums signature (cosign v3 `--bundle`) when cosign is on PATH, with an explicit checksum-only fallback otherwise; `PSE_EDGE_REQUIRE_COSIGN=1` makes the fallback a hard failure. Trust root and limits documented in README.
+- Release assets are now signed keylessly with cosign (sigstore), bound to the GitHub Actions OIDC identity of the `release.yml` workflow at `refs/tags/v<semver>` (issue #26). The release is published as a draft and promoted only after the signature passes the same verification `install.sh` uses. `install.sh` verifies the checksums signature (cosign `--bundle`, requires cosign ≥ 2.4.2) when cosign is on PATH, with an explicit checksum-only fallback otherwise; `PSE_EDGE_REQUIRE_COSIGN=1` makes the fallback a hard failure. A failed signature verification is always fatal. Trust root and limits documented in README.
 
 ### Fixed
 

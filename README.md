@@ -211,6 +211,15 @@ Absolute and vs-PSEi performance with 52-week band position from the local store
 
 Run `pse-edge-pp-cli --help` for the full command reference and flag list.
 
+### Delivering output (`--deliver`)
+
+`--deliver webhook:<url>` POSTs command output to a URL instead of (or in addition to) stdout. For safety, the webhook sink **refuses by default** any destination whose host resolves to a private, link-local, cloud-metadata (`169.254.169.254`), or reserved IP range, and it re-validates every redirect hop. Notes:
+
+- Opt out explicitly with `--deliver-webhook-allow-private` (e.g. to a local service on `127.0.0.1`).
+- If the host cannot be resolved, delivery is refused (fail-closed) — a transient resolver outage will block delivery.
+- The check is resolve-then-check: it prevents accidental or compromised-argument misrouting, not a DNS-rebinding attacker.
+- Delivery through a proxy that performs its own DNS is outside this guard's guarantees.
+
 ## Paths & environment variables
 
 This CLI separates local files into four path kinds:

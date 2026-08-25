@@ -5,7 +5,9 @@ package store_test
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/ph-commons/pse-edge-pp-cli/internal/store"
@@ -601,6 +603,39 @@ func TestRegisterQuerySynonyms_DeclaredFoldsUndeclaredDoesNot(t *testing.T) {
 	}
 	if got := store.NormalizeQuery("check foo qux now"); got != "check foo qux now" {
 		t.Errorf("undeclared pair must not fold: got %q", got)
+	}
+}
+
+func TestRegisterQuerySynonyms_ConcurrentSafe(t *testing.T) {
+	// Pins that concurrent registration does not corrupt the shared
+	// package-level synonym state: installPlaybooksFromEmbed reaches
+	// RegisterQuerySynonyms from parallel goroutines (see
+	// TestPlaybookInit_ConcurrentSafe), which previously triggered
+	// "fatal error: concurrent map writes" on the querySynonyms map.
+	const workers = 8
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			variant := fmt.Sprintf("phrase %d", i)
+			canonical := fmt.Sprintf("canon%d", i)
+			store.RegisterQuerySynonyms(map[string]string{variant: canonical})
+			got, want := store.NormalizeQuery("hello "+variant+" world"), store.NormalizeQuery("hello "+canonical+" world")
+			if got != want {
+				t.Errorf("goroutine %d: fold broken: %q vs %q", i, got, want)
+			}
+		}(i)
+	}
+	wg.Wait()
+	// Registration is additive: all workers' folds must be live after
+	// the concurrent registrations settle.
+	for i := 0; i < workers; i++ {
+		variant := fmt.Sprintf("phrase %d", i)
+		canonical := fmt.Sprintf("canon%d", i)
+		if got, want := store.NormalizeQuery("hello "+variant+" world"), store.NormalizeQuery("hello "+canonical+" world"); got != want {
+			t.Errorf("worker %d fold not live after concurrent registration: %q vs %q", i, got, want)
+		}
 	}
 }
 

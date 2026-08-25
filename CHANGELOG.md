@@ -17,6 +17,10 @@ automation for this independent repo (that rule applies only when publishing
 
 - Data race in the learn loop's query-synonym registry (`RegisterQuerySynonyms`) that could crash concurrent installs with `fatal error: concurrent map writes`. Registration and reads are now guarded by a package-level `sync.RWMutex`, with a pinned `-race` regression test. CI now runs `go test -race ./...`.
 
+### Security
+
+- `--deliver webhook:<url>` now refuses destinations that resolve to private / link-local / cloud-metadata / reserved IP ranges (SSRF guard, issue #25), including NAT64 well-known (`64:ff9b::/96`) and local-use (`64:ff9b:1::/48`) prefixes. The guard also re-validates every redirect hop. Opt out explicitly with `--deliver-webhook-allow-private`. DNS resolution failure blocks delivery (fail-closed); the check is resolve-then-check and does not defend against DNS rebinding. The flag is blocked from the MCP tool surface alongside `--deliver`.
+
 ## [0.1.5] - 2026-08-18
 
 ### Changed

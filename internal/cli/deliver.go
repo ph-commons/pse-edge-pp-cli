@@ -106,7 +106,8 @@ func deliverFile(path string, body []byte) error {
 // refuses to POST to by default (SSRF guard). Covers loopback, RFC1918
 // private, CGNAT, link-local (incl. the 169.254.169.254 cloud metadata
 // address), ULA, multicast, reserved/benchmark/TEST-NET, and the IPv6
-// IPv4-embedding prefixes (6to4 2002::/16, Teredo 2001::/32).
+// IPv4-embedding prefixes (6to4 2002::/16, Teredo 2001::/32, NAT64
+// 64:ff9b::/96, plus the deprecated ::/96 and ::ffff:0:0:0/96 forms).
 var blockedDestinationRanges = []netip.Prefix{
 	// IPv4
 	netip.MustParsePrefix("0.0.0.0/8"),       // "this" network / unspecified
@@ -125,13 +126,16 @@ var blockedDestinationRanges = []netip.Prefix{
 	netip.MustParsePrefix("224.0.0.0/4"),     // multicast
 	netip.MustParsePrefix("240.0.0.0/4"),     // reserved (incl. broadcast 255.255.255.255)
 	// IPv6
-	netip.MustParsePrefix("::/128"),    // unspecified
-	netip.MustParsePrefix("::1/128"),   // loopback
-	netip.MustParsePrefix("2001::/32"), // Teredo (embeds IPv4)
-	netip.MustParsePrefix("2002::/16"), // 6to4 (embeds IPv4)
-	netip.MustParsePrefix("fc00::/7"),  // unique local
-	netip.MustParsePrefix("fe80::/10"), // link-local
-	netip.MustParsePrefix("ff00::/8"),  // multicast
+	netip.MustParsePrefix("::/128"),          // unspecified
+	netip.MustParsePrefix("::1/128"),         // loopback
+	netip.MustParsePrefix("::/96"),           // deprecated IPv4-compatible
+	netip.MustParsePrefix("64:ff9b::/96"),    // NAT64 well-known prefix (RFC 6052)
+	netip.MustParsePrefix("2001::/32"),       // Teredo (embeds IPv4)
+	netip.MustParsePrefix("2002::/16"),       // 6to4 (embeds IPv4)
+	netip.MustParsePrefix("fc00::/7"),        // unique local
+	netip.MustParsePrefix("fe80::/10"),       // link-local
+	netip.MustParsePrefix("ff00::/8"),        // multicast
+	netip.MustParsePrefix("::ffff:0:0:0/96"), // deprecated IPv4-translated
 }
 
 // isBlockedDestinationIP reports whether ip falls in a blocked range.
@@ -203,12 +207,12 @@ func webhookClient(allowPrivate bool) *http.Client {
 	}
 }
 
-func deliverWebhook(url string, body []byte, compact bool, allowPrivate bool) error {
+func deliverWebhook(rawURL string, body []byte, compact bool, allowPrivate bool) error {
 	contentType := "application/json"
 	if compact {
 		contentType = "application/x-ndjson"
 	}
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, rawURL, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("building webhook request: %w", err)
 	}

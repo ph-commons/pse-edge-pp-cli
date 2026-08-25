@@ -59,12 +59,15 @@ func TestIsBlockedDestinationIP(t *testing.T) {
 		"255.255.255.255",
 		"::",                 // unspecified
 		"::1",                // loopback
+		"::127.0.0.1",        // deprecated IPv4-compatible (embeds loopback)
 		"2002:7f00:1::",      // 6to4 embedding 127.0.0.1
+		"64:ff9b::a00:1",     // NAT64 embedding 10.0.0.1
 		"fc00::1",            // ULA
 		"fe80::1",            // link-local
 		"ff02::1",            // multicast
 		"::ffff:127.0.0.1",   // IPv4-mapped loopback
 		"::ffff:192.168.0.1", // IPv4-mapped RFC1918
+		"::ffff:0:a00:1",     // deprecated IPv4-translated embedding 10.0.0.1
 	}
 	for _, s := range blocked {
 		ip := net.ParseIP(s)
@@ -178,9 +181,11 @@ func TestDeliverWebhookAllowPrivateProceeds(t *testing.T) {
 }
 
 func TestDeliverWebhookRedirectRevalidated(t *testing.T) {
-	// Server A redirects to server B; both are loopback. With the guard
-	// on, the initial destination check refuses before any POST. With
-	// AllowPrivate, the redirect is followed and B is reached.
+	// Both servers are loopback, so with the guard on the initial
+	// destination check refuses before any hop. The redirect-hop
+	// re-validation itself is pinned directly in TestWebhookClientRedirectPolicy;
+	// this test covers the AllowPrivate opt-in path through a real
+	// httptest redirect chain.
 	var received atomic.Bool
 	serverB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		received.Store(true)

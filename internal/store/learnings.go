@@ -180,6 +180,9 @@ func queryCharTokens(s string) []string {
 // BEFORE stopword filtering so a variant containing a stopword-shaped
 // token ("to" in "to-day" -> "to day") still folds as a unit.
 func foldQueryTokens(tokens []string) []string {
+	// querySynonymRules is always REBOUND (never mutated in place) by
+	// RegisterQuerySynonyms under querySynonymMu.Lock, so snapshotting
+	// the slice header under RLock then reading it after RUnlock is safe.
 	querySynonymMu.RLock()
 	rules := querySynonymRules
 	querySynonymMu.RUnlock()

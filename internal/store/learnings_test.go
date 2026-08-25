@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 
@@ -629,11 +628,13 @@ func TestRegisterQuerySynonyms_ConcurrentSafe(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
-	// Registration is additive: all workers' folds must be live.
+	// Registration is additive: all workers' folds must be live after
+	// the concurrent registrations settle.
 	for i := 0; i < workers; i++ {
+		variant := fmt.Sprintf("phrase %d", i)
 		canonical := fmt.Sprintf("canon%d", i)
-		if got := store.NormalizeQuery("hello " + canonical + " world"); !strings.Contains(got, "hello") {
-			t.Errorf("worker %d fold missing: %q", i, got)
+		if got, want := store.NormalizeQuery("hello "+variant+" world"), store.NormalizeQuery("hello "+canonical+" world"); got != want {
+			t.Errorf("worker %d fold not live after concurrent registration: %q vs %q", i, got, want)
 		}
 	}
 }

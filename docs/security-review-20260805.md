@@ -167,10 +167,10 @@ Much of MCP/CLI is Printing Press generated. Security properties depend on gener
 - [x] HIGH MCP `--db` blocked  
 - [x] Install script + MCP paths covered explicitly  
 - [x] MEDIUM residuals documented with owners / product choice  
-- [ ] Optional follow-ups (file as separate issues if desired):
-  1. CI job: `govulncheck ./...` on PR  
-  2. Webhook deliver private-IP policy  
-  3. Cosign/sigstore on release assets  
+- [x] Optional follow-ups filed as separate issues (20260825):
+  1. CI job: `govulncheck ./...` on PR — [#24](https://github.com/ph-commons/pse-edge-pp-cli/issues/24)
+  2. Webhook deliver private-IP policy — [#25](https://github.com/ph-commons/pse-edge-pp-cli/issues/25)
+  3. Cosign/sigstore on release assets — [#26](https://github.com/ph-commons/pse-edge-pp-cli/issues/26)  
 
 ---
 

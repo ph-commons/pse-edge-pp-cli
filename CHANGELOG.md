@@ -15,7 +15,7 @@ automation for this independent repo (that rule applies only when publishing
 
 ### Fixed
 
-- Data race in the learn loop's query-synonym registry (`RegisterQuerySynonyms`) that could crash concurrent installs with `fatal error: concurrent map writes`; surfaced by the `modernc.org/sqlite` 1.57.0 bump on CI. Registration and reads are now guarded by a package-level `sync.RWMutex`, with a pinned `-race` regression test. CI now runs `go test -race ./...`.
+- Data race in the learn loop's query-synonym registry (`RegisterQuerySynonyms`) that could crash concurrent installs with `fatal error: concurrent map writes`. Registration and reads are now guarded by a package-level `sync.RWMutex`, with a pinned `-race` regression test. CI now runs `go test -race ./...`.
 
 ## [0.1.5] - 2026-08-18
 

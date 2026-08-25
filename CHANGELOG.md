@@ -13,6 +13,10 @@ automation for this independent repo (that rule applies only when publishing
 
 ## [Unreleased]
 
+### Security
+
+- Release assets are now signed keylessly with cosign (sigstore), bound to the GitHub Actions OIDC identity of the `release.yml` workflow at `refs/tags/v*` (issue #26). `install.sh` verifies the checksums signature (cosign v3 `--bundle`) when cosign is on PATH, with an explicit checksum-only fallback otherwise; `PSE_EDGE_REQUIRE_COSIGN=1` makes the fallback a hard failure. Trust root and limits documented in README.
+
 ### Fixed
 
 - Data race in the learn loop's query-synonym registry (`RegisterQuerySynonyms`) that could crash concurrent installs with `fatal error: concurrent map writes`. Registration and reads are now guarded by a package-level `sync.RWMutex`, with a pinned `-race` regression test. CI now runs `go test -race ./...`.

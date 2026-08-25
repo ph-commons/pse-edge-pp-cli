@@ -19,6 +19,9 @@
 *.swp
 *.swo
 
+# Worktree isolation (see change-pipeline worktree-isolation.md)
+.worktrees/
+
 # Local run artifacts (not for public tree)
 .manuscripts/
 dogfood-results.json

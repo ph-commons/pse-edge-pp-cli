@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -90,9 +91,13 @@ var (
 	// additions; querySynonymRules is its compiled form. Package-level
 	// by necessity: NormalizeQuery is a package function with no config
 	// receiver. Registration is one-shot at CLI startup (before any
-	// store use), matching the entities.Config mutation contract.
+	// store use), matching the entities.Config mutation contract — but
+	// installPlaybooksFromEmbed can reach it from concurrent goroutines
+	// (its concurrency-safety test does exactly that), so both vars are
+	// guarded by querySynonymMu.
 	querySynonyms     = copyQuerySynonymDefaults()
 	querySynonymRules = compileQuerySynonyms(querySynonyms)
+	querySynonymMu    sync.RWMutex
 )
 
 func copyQuerySynonymDefaults() map[string]string {
@@ -110,6 +115,8 @@ func copyQuerySynonymDefaults() map[string]string {
 // entities.Config, keeping the two normalizers symmetric. Entries
 // with an empty side are dropped; folding is a single hop.
 func RegisterQuerySynonyms(synonyms map[string]string) {
+	querySynonymMu.Lock()
+	defer querySynonymMu.Unlock()
 	changed := false
 	for v, canonical := range synonyms {
 		v = strings.ToLower(strings.TrimSpace(v))
@@ -173,7 +180,9 @@ func queryCharTokens(s string) []string {
 // BEFORE stopword filtering so a variant containing a stopword-shaped
 // token ("to" in "to-day" -> "to day") still folds as a unit.
 func foldQueryTokens(tokens []string) []string {
+	querySynonymMu.RLock()
 	rules := querySynonymRules
+	querySynonymMu.RUnlock()
 	if len(rules) == 0 || len(tokens) == 0 {
 		return tokens
 	}

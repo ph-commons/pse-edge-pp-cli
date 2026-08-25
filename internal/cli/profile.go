@@ -199,8 +199,10 @@ them under <name>. To update an existing profile, run save again; the
 entry is replaced.
 
 To avoid creating empty profiles, at least one non-default flag must be
-present (other than --profile, --config, and --home, which are never
-captured: they control profile/config resolution and would never apply).`,
+present (other than --profile, --config, --home, --deliver, and
+--deliver-webhook-allow-private, which are never captured: the first
+three control profile/config resolution; the delivery flags are
+per-invocation side-effect/security switches and must not persist).`,
 		Example: `  pse-edge-pp-cli profile save my-defaults --json --compact
   pse-edge-pp-cli profile save tonight-defaults --region US`,
 		Args: cobra.ExactArgs(1),

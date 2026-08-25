@@ -61,7 +61,8 @@ func TestIsBlockedDestinationIP(t *testing.T) {
 		"::1",                // loopback
 		"::127.0.0.1",        // deprecated IPv4-compatible (embeds loopback)
 		"2002:7f00:1::",      // 6to4 embedding 127.0.0.1
-		"64:ff9b::a00:1",     // NAT64 embedding 10.0.0.1
+		"64:ff9b::a00:1",       // NAT64 WKP embedding 10.0.0.1 (RFC 6052)
+		"64:ff9b:1::a9fe:a9fe", // NAT64 local-use embedding 169.254.169.254 (RFC 8215)
 		"fc00::1",            // ULA
 		"fe80::1",            // link-local
 		"ff02::1",            // multicast
@@ -132,11 +133,28 @@ func TestCheckWebhookDestination(t *testing.T) {
 		t.Error("checkWebhookDestination(http:///hook) = nil, want error")
 	}
 
+	// userinfo@host: Hostname() must be 127.0.0.1, not the public userinfo.
+	if err := checkWebhookDestination("http://8.8.8.8@127.0.0.1/"); err == nil {
+		t.Error("checkWebhookDestination(userinfo@loopback) = nil, want block error")
+	}
+
+	// IPv6 literals (mapped metadata + loopback).
+	for _, u := range []string{"http://[::ffff:169.254.169.254]/", "http://[::1]/"} {
+		if err := checkWebhookDestination(u); err == nil {
+			t.Errorf("checkWebhookDestination(%q) = nil, want block error", u)
+		}
+	}
+
 	// Hex-form IPv4: deterministic — if the resolver interprets it the
 	// destination is 127.0.0.1 (blocked); if it cannot resolve it, the
 	// fail-closed DNS error blocks delivery. Either way an error.
 	if err := checkWebhookDestination("http://0x7f000001/"); err == nil {
 		t.Error("checkWebhookDestination(http://0x7f000001) = nil, want block or fail-closed error")
+	}
+
+	// Decimal IPv4 (2130706433 = 127.0.0.1): same fail-closed-or-block.
+	if err := checkWebhookDestination("http://2130706433/"); err == nil {
+		t.Error("checkWebhookDestination(http://2130706433) = nil, want block or fail-closed error")
 	}
 
 	// Trailing-dot hostname: lookup fails on most resolvers -> fail-closed.

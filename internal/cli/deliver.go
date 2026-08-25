@@ -107,7 +107,8 @@ func deliverFile(path string, body []byte) error {
 // private, CGNAT, link-local (incl. the 169.254.169.254 cloud metadata
 // address), ULA, multicast, reserved/benchmark/TEST-NET, and the IPv6
 // IPv4-embedding prefixes (6to4 2002::/16, Teredo 2001::/32, NAT64
-// 64:ff9b::/96, plus the deprecated ::/96 and ::ffff:0:0:0/96 forms).
+// 64:ff9b::/96 and RFC 8215 local-use 64:ff9b:1::/48, plus the
+// deprecated ::/96 and ::ffff:0:0:0/96 forms).
 var blockedDestinationRanges = []netip.Prefix{
 	// IPv4
 	netip.MustParsePrefix("0.0.0.0/8"),       // "this" network / unspecified
@@ -130,6 +131,7 @@ var blockedDestinationRanges = []netip.Prefix{
 	netip.MustParsePrefix("::1/128"),         // loopback
 	netip.MustParsePrefix("::/96"),           // deprecated IPv4-compatible
 	netip.MustParsePrefix("64:ff9b::/96"),    // NAT64 well-known prefix (RFC 6052)
+	netip.MustParsePrefix("64:ff9b:1::/48"),  // NAT64 local-use translation prefix (RFC 8215)
 	netip.MustParsePrefix("2001::/32"),       // Teredo (embeds IPv4)
 	netip.MustParsePrefix("2002::/16"),       // 6to4 (embeds IPv4)
 	netip.MustParsePrefix("fc00::/7"),        // unique local

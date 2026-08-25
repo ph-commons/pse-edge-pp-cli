@@ -79,18 +79,14 @@ func TestCliArgsFromMCP_BlocksRootFlags(t *testing.T) {
 		// Allowed per-command flag passes through.
 		"limit": float64(10),
 	}
-	got := cliArgsFromMCP(in, map[string]bool{
-		"args":                          true,
-		"base-url":                      true,
-		"client":                        true,
-		"config":                        true,
-		"deliver":                       true,
-		"deliver-webhook-allow-private": true,
-		"home":                          true,
-		"insecure":                      true,
-		"profile":                       true,
-		"token":                         true,
-	})
+	blocked := map[string]bool{}
+	for k, v := range blockedRootFlags {
+		blocked[k] = v
+	}
+	for k, v := range reservedStructuredArgs {
+		blocked[k] = v
+	}
+	got := cliArgsFromMCP(in, blocked)
 	want := []string{"--limit", "10"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("cliArgsFromMCP dropped/kept wrong keys: got %v, want %v", got, want)

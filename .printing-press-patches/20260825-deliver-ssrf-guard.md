@@ -17,7 +17,8 @@ surface in `docs/security-review-20260805.md` (M2), owner chose option A
   - `DeliverSink.AllowPrivate bool` (set only via the new flag).
   - `blockedDestinationRanges []netip.Prefix` — loopback, RFC1918, CGNAT,
     link-local (incl. 169.254.169.254), ULA, multicast, reserved /
-    TEST-NET / benchmark, 6to4/Teredo.
+    TEST-NET / benchmark, 6to4/Teredo, NAT64 64:ff9b::/96 (RFC 6052)
+    and local-use 64:ff9b:1::/48 (RFC 8215).
   - `isBlockedDestinationIP` — `netip.AddrFromSlice` + `Unmap`; unparseable
     fails closed.
   - `checkWebhookDestination` — `url.Parse` → `u.Hostname()` → `net.LookupIP`;
@@ -27,8 +28,14 @@ surface in `docs/security-review-20260805.md` (M2), owner chose option A
   - `deliverWebhook` now takes `allowPrivate` and uses `webhookClient`.
 - `internal/cli/root.go` — `--deliver-webhook-allow-private` persistent flag
   (default false); help text updated.
+- `internal/cli/profile.go` — `--deliver` and `--deliver-webhook-allow-private`
+  in `reservedProfileFlags` and `profileSaveSkipFlags` (never overlay, never
+  capture). `profile save` Long names those flags.
+- `internal/cli/profile_guard_test.go` — overlay refusal + skip-map superset.
 - `internal/mcp/cobratree/shellout.go` — `deliver-webhook-allow-private`
   added to `blockedRootFlags` (defense-in-depth; `deliver` already blocked).
+- `internal/mcp/cobratree/shellout_test.go` — `TestCliArgsFromMCP_BlocksRootFlags`
+  passes the production `blockedRootFlags` map (plus `reservedStructuredArgs`).
 - `internal/cli/deliver_test.go` — new white-box tests: IP classification
   table (blocked/pass/fail-closed), `checkWebhookDestination` literals +
   localhost + hex-form/trailing-dot, redirect policy, AllowPrivate opt-in
@@ -39,7 +46,10 @@ surface in `docs/security-review-20260805.md` (M2), owner chose option A
 - `internal/cli/deliver.go`
 - `internal/cli/deliver_test.go`
 - `internal/cli/root.go`
+- `internal/cli/profile.go`
+- `internal/cli/profile_guard_test.go`
 - `internal/mcp/cobratree/shellout.go`
+- `internal/mcp/cobratree/shellout_test.go`
 - `README.md` (deliver section), `CHANGELOG.md` (Unreleased/Security)
 
 ## Accepted limits (documented in code + README)

@@ -35,7 +35,7 @@ jobs:
 
       # Pinned to the v3.9.2 commit SHA: this action is the trust-critical
       # step for keyless signing, so it must not float with a mutable tag.
-      - uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6
 
       # Pinned to the v0.24.2 commit SHA. goreleaser sboms.cmd is syft;
       # the action does not install it (https://goreleaser.com/customization/ci/actions/).

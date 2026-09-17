@@ -15,7 +15,7 @@ automation for this independent repo (that rule applies only when publishing
 
 ### Fixed
 
-- Installer no longer writes a self-referential `pp-pse-edge` link when `~/.claude/skills` is already a symlink to the canonical skills tree. That link duplicated the dir-level symlink and left git-tracked churn in `hermes-config` (fixed by [ngpestelos/src#694](https://github.com/ngpestelos/src/pull/694)).
+- Installer no longer writes a self-referential `pp-pse-edge` link when the skills dir already exposes that skill (the fleet layout symlinks `~/.claude/skills` at the canonical skills tree). The duplicate link left git-tracked churn on every machine that syncs that tree. Real per-skill farms and any other layout still get wired.
 
 ## [0.1.6] - 2026-09-08
 

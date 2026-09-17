@@ -155,9 +155,12 @@ case ":$PATH:" in
   *) warn "$GOBIN_DIR not on PATH — add it to use $BIN" ;;
 esac
 
-# Fleet skill wiring (optional)
+# Fleet skill wiring (optional). When ~/.claude/skills is itself a symlink to
+# the canonical tree every skill is already exposed, and linking inside it
+# writes a self-referential, machine-specific link back into the canonical
+# directory (git-tracked churn in hermes-config). Only wire a real dir.
 SKILL_SRC="${HERMES_CONFIG:-$HOME/src/hermes-config}/skills/pp-pse-edge"
-if [ -d "$SKILL_SRC" ] && [ -d "$HOME/.claude/skills" ]; then
+if [ -d "$SKILL_SRC" ] && [ -d "$HOME/.claude/skills" ] && [ ! -L "$HOME/.claude/skills" ]; then
   ln -sfn "$SKILL_SRC" "$HOME/.claude/skills/pp-pse-edge"
   log "Linked ~/.claude/skills/pp-pse-edge"
 fi

@@ -13,6 +13,10 @@ automation for this independent repo (that rule applies only when publishing
 
 ## [Unreleased]
 
+### Fixed
+
+- Installer no longer writes a self-referential `pp-pse-edge` link when `~/.claude/skills` is already a symlink to the canonical skills tree. That link duplicated the dir-level symlink and left git-tracked churn in `hermes-config` (fixed by [ngpestelos/src#694](https://github.com/ngpestelos/src/pull/694)).
+
 ## [0.1.6] - 2026-09-08
 
 ### Added

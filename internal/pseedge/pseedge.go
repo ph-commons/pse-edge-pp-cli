@@ -294,11 +294,16 @@ type Snapshot struct {
 	PrevCloseDate   string   `json:"prev_close_date,omitempty"` // YYYY-MM-DD
 	Change          *float64 `json:"change"`                    // signed; sign derived from up/down prefix
 	PctChange       *float64 `json:"pct_change"`
-	Volume          *float64 `json:"volume"`
-	Value           *float64 `json:"value"`
-	AvgPrice        *float64 `json:"avg_price"`
-	Week52High      *float64 `json:"week52_high"`
-	Week52Low       *float64 `json:"week52_low"`
+	// ChangeMagnitudeMissing records a direction-only change cell (the
+	// up/down word with an empty magnitude). The snapshot is otherwise
+	// valid, so callers must not read it as a blank (closed-session) cell.
+	// Not serialized (issue #52).
+	ChangeMagnitudeMissing bool     `json:"-"`
+	Volume                 *float64 `json:"volume"`
+	Value                  *float64 `json:"value"`
+	AvgPrice               *float64 `json:"avg_price"`
+	Week52High             *float64 `json:"week52_high"`
+	Week52Low              *float64 `json:"week52_low"`
 }
 
 var (
@@ -314,8 +319,13 @@ var (
 	// then silently reports a positive change (issue #8). Percent group
 	// allows interior whitespace ("( 1.32%)") as currently served by EDGE.
 	// Callers must strip tags then normalizeChangeCell (NBSP → space).
-	changeCellRE    = regexp.MustCompile(`(?is)(up|down)\s*([\d,\.]+)\s*\(\s*([\d,\.\-]+)\s*%\s*\)`)
-	prevCloseDateRE = regexp.MustCompile(`\(([A-Z][a-z]{2} \d{1,2}, \d{4})\)`)
+	changeCellRE = regexp.MustCompile(`(?is)(up|down)\s*([\d,\.]+)\s*\(\s*([\d,\.\-]+)\s*%\s*\)`)
+	// directionOnlyChangeCellRE is the issue #52 direction-only cell: EDGE
+	// serves the up/down word with an empty magnitude ("down (%)"). It is
+	// anchored so the whole normalized cell must be the direction-only form;
+	// a direction-only prefix with trailing content stays markup drift.
+	directionOnlyChangeCellRE = regexp.MustCompile(`(?is)^\s*(up|down)\s*\(\s*%\s*\)\s*$`)
+	prevCloseDateRE           = regexp.MustCompile(`\(([A-Z][a-z]{2} \d{1,2}, \d{4})\)`)
 )
 
 // normalizeChangeCell flattens EDGE change-cell markup for changeCellRE.
@@ -401,17 +411,25 @@ func ParseStockData(htmlBody string) (*Snapshot, error) {
 
 	// Change cell: sign derived from the required up/down prefix. A BLANK
 	// cell is an explicit closed-session state — change fields stay nil,
-	// never zero. A NON-blank cell the pattern cannot match is upstream
-	// markup drift: a typed hard error, never a silent nil (callers could
-	// not tell the two apart otherwise). Bare "up"/"down" with no figures
-	// also stays nil (legitimate intermediate/blank state).
+	// never zero. A direction-only cell ("down (%)") is a valid snapshot
+	// with no magnitude (issue #52). A NON-blank cell neither pattern can
+	// match is upstream markup drift: a typed hard error, never a silent
+	// nil (callers could not tell the two apart otherwise). Bare "up"/"down"
+	// with no figures also stays nil (legitimate intermediate/blank state).
 	// Match on stripTags first so nested markup cannot hide the direction
 	// word, then normalizeChangeCell for NBSP (Go \s is ASCII-only).
 	if raw, ok := cells["Change(% Change)"]; ok {
 		flat := stripTags(raw)
-		m := changeCellRE.FindStringSubmatch(normalizeChangeCell(flat))
+		norm := normalizeChangeCell(flat)
+		m := changeCellRE.FindStringSubmatch(norm)
 		if m == nil {
-			if flat != "" && flat != "-" && !strings.EqualFold(flat, "up") && !strings.EqualFold(flat, "down") {
+			if directionOnlyChangeCellRE.MatchString(norm) {
+				// Direction-only cell: the up/down word with an empty
+				// magnitude. The snapshot is otherwise valid, so keep the
+				// leg and flag the missing magnitude rather than reading it
+				// as a blank (closed-session) cell.
+				snap.ChangeMagnitudeMissing = true
+			} else if flat != "" && flat != "-" && !strings.EqualFold(flat, "up") && !strings.EqualFold(flat, "down") {
 				return nil, &MarkupDriftError{Endpoint: "companyPage/stockData.do", Field: "Change(% Change)", Content: flat}
 			}
 		}

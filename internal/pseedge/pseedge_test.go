@@ -199,6 +199,63 @@ sendData.security_id = "320";
 </tr>
 </table>`
 
+// stockDirectionOnlyFixture is issue #52: EDGE served the change cell as the
+// direction word with an empty magnitude ("down (%)"). The edge leg must
+// survive with Change/PctChange nil and ChangeMagnitudeMissing set, rather
+// than failing the whole snapshot as markup drift.
+const stockDirectionOnlyFixture = `<script>
+sendData.cmpy_id = "34";
+sendData.security_id = "320";
+</script>
+<div class="compInfo"><p>Atlas Consolidated Mining and Development Corporation</p></div>
+<option value="320" selected>AT</option>
+<table class="view">
+<tr>
+  <th>Last Traded Price</th>
+  <td>15.60</td>
+  <th>Open</th>
+  <td>15.50</td>
+</tr>
+<tr>
+  <th>Change(% Change)</th>
+  <td>down` + "\u00a0" + `(%)</td>
+</tr>
+</table>`
+
+// stockMalformedPercentChangeFixture has a direction word and a non-numeric
+// percent figure. The direction-only alternative must not swallow it: it is
+// still upstream markup drift.
+const stockMalformedPercentChangeFixture = `<script>
+sendData.cmpy_id = "34";
+sendData.security_id = "320";
+</script>
+<div class="compInfo"><p>Atlas Consolidated Mining and Development Corporation</p></div>
+<option value="320" selected>AT</option>
+<table class="view">
+<tr>
+  <th>Change(% Change)</th>
+  <td>down (abc%)</td>
+</tr>
+</table>`
+
+// stockDirectionOnlyTrailingPayloadFixture is malformed: the direction-only
+// form appears as a prefix with a numeric-looking suffix. An unanchored
+// direction-only match would accept the prefix and silently drop
+// "0.5 (1%)"; the whole-cell match must reject it as markup drift so the
+// non-blank unmatched-cell contract holds (issue #52 review).
+const stockDirectionOnlyTrailingPayloadFixture = `<script>
+sendData.cmpy_id = "34";
+sendData.security_id = "320";
+</script>
+<div class="compInfo"><p>Atlas Consolidated Mining and Development Corporation</p></div>
+<option value="320" selected>AT</option>
+<table class="view">
+<tr>
+  <th>Change(% Change)</th>
+  <td>down` + "\u00a0" + `(%) 0.5 (1%)</td>
+</tr>
+</table>`
+
 // stockClosedFixture has a blank change cell: explicit closed-session
 // state, change fields must stay nil (never zero).
 const stockClosedFixture = `<script>
@@ -503,6 +560,51 @@ func TestParseStockDataChangeCellStripsInnerTags(t *testing.T) {
 	}
 	if v := fp(t, snap.PctChange, "PctChange"); v != -1.32 {
 		t.Errorf("PctChange = %v, want -1.32", v)
+	}
+}
+
+// TestParseStockDataDirectionOnlyChangeCell covers issue #52: a direction-only
+// change cell ("down (%)") must not fail the snapshot. The edge leg survives
+// with Change/PctChange nil, and ChangeMagnitudeMissing marks it so callers do
+// not read it as a blank (closed-session) cell.
+func TestParseStockDataDirectionOnlyChangeCell(t *testing.T) {
+	snap, err := ParseStockData(stockDirectionOnlyFixture)
+	if err != nil {
+		t.Fatalf("ParseStockData: %v", err)
+	}
+	if snap.LastTradedPrice == nil || *snap.LastTradedPrice != 15.60 {
+		t.Errorf("LastTradedPrice = %v, want 15.60 (edge leg must survive)", snap.LastTradedPrice)
+	}
+	if snap.Open == nil || *snap.Open != 15.50 {
+		t.Errorf("Open = %v, want 15.50", snap.Open)
+	}
+	if snap.Change != nil || snap.PctChange != nil {
+		t.Errorf("direction-only change cell must keep Change/PctChange nil, got %v/%v", snap.Change, snap.PctChange)
+	}
+	if !snap.ChangeMagnitudeMissing {
+		t.Error("ChangeMagnitudeMissing must be true for a direction-only change cell")
+	}
+}
+
+// TestParseStockDataMalformedPercentIsStillDrift locks the new regex boundary:
+// the direction-only alternative must not accept a non-numeric percent figure.
+func TestParseStockDataMalformedPercentIsStillDrift(t *testing.T) {
+	_, err := ParseStockData(stockMalformedPercentChangeFixture)
+	var driftErr *MarkupDriftError
+	if !errors.As(err, &driftErr) {
+		t.Fatalf("malformed percent change cell must be *MarkupDriftError, got %v", err)
+	}
+}
+
+// TestParseStockDataDirectionOnlyTrailingPayloadIsDrift pins the direction-only
+// form to the whole cell: a direction-only prefix with trailing content is
+// non-blank unmatched content, so it must stay a typed drift error rather than
+// being silently accepted with its suffix dropped.
+func TestParseStockDataDirectionOnlyTrailingPayloadIsDrift(t *testing.T) {
+	_, err := ParseStockData(stockDirectionOnlyTrailingPayloadFixture)
+	var driftErr *MarkupDriftError
+	if !errors.As(err, &driftErr) {
+		t.Fatalf("direction-only prefix with trailing payload must be *MarkupDriftError, got %v", err)
 	}
 }
 

@@ -158,7 +158,7 @@ false. An empty search, a page cap, or a failed page does not prove the
 official viewer has no other filings. Raise --max-scan-pages (default 40,
 50 rows per page) when page_cap_hit is true.
 
-Original bytes are kept. Extracted text is a companion file. Unavailable
+Original bytes are kept. A response larger than 32 MiB is a download failure; the prefix is not stored as the document. Extracted text is a companion file. Unavailable
 attachments, download failures, rejected error pages, and text-extraction
 failures are separate artifact outcomes. Amendments stay distinct edge_no
 records. Each rerun fetches retained files again. An identical hash adds

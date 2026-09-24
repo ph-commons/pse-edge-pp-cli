@@ -15,7 +15,9 @@ import (
 	"github.com/ph-commons/pse-edge-pp-cli/internal/cliutil"
 )
 
-const disclosureDocumentMaxBody = 32 << 20
+// disclosureDocumentMaxBody is the largest original document this command will retain.
+// A response that does not fit is an error. The prefix is not stored as the document.
+var disclosureDocumentMaxBody int64 = 32 << 20
 
 // DisclosurePayloadError is a downloaded response that is not a filing document.
 // Kind is "unavailable" or "rejected_error_page".
@@ -95,9 +97,12 @@ func FetchDisclosureDocument(ctx context.Context, hc *http.Client, fileID string
 		return nil, "", fmt.Errorf("pse-edge downloadHtml.do file_id %s: %w", fileID, err)
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, disclosureDocumentMaxBody))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, disclosureDocumentMaxBody+1))
 	if err != nil {
 		return nil, "", fmt.Errorf("pse-edge downloadHtml.do file_id %s: reading response: %w", fileID, err)
+	}
+	if int64(len(body)) > disclosureDocumentMaxBody {
+		return nil, resp.Header.Get("Content-Type"), fmt.Errorf("pse-edge downloadHtml.do file_id %s: response exceeds %d bytes; refusing a truncated document", fileID, disclosureDocumentMaxBody)
 	}
 	if resp.StatusCode == http.StatusTooManyRequests {
 		disclosureLimiter.OnRateLimit()

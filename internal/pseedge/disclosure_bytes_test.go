@@ -33,6 +33,24 @@ func TestClassifyDisclosurePayload(t *testing.T) {
 	}
 }
 
+func TestFetchDisclosureDocumentRefusesTruncation(t *testing.T) {
+	previous := disclosureDocumentMaxBody
+	disclosureDocumentMaxBody = 8
+	t.Cleanup(func() { disclosureDocumentMaxBody = previous })
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("<html>TOO-BIG</html>"))
+	}))
+	defer srv.Close()
+	t.Setenv("PSE_EDGE_BASE_URL", srv.URL)
+	body, _, err := FetchDisclosureDocument(context.Background(), srv.Client(), "1959980")
+	if err == nil || !strings.Contains(err.Error(), "exceeds 8 bytes") {
+		t.Fatalf("err = %v body=%q", err, body)
+	}
+	if body != nil {
+		t.Fatal("truncated prefix was returned as a document")
+	}
+}
+
 func TestFetchDisclosureDocumentNotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/downloadHtml.do" || r.URL.Query().Get("file_id") != "1959980" {

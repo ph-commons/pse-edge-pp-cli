@@ -29,6 +29,7 @@ func ParseLayout(text string, expected time.Time, sha string) (Parsed, error) {
 
 	for pageIdx, page := range pages {
 		pageNo := pageIdx + 1
+		pageHead := pageColumns{}
 		lines := strings.Split(page, "\n")
 		for lineNo, line := range lines {
 			trimmed := strings.TrimSpace(line)
@@ -46,12 +47,29 @@ func ParseLayout(text string, expected time.Time, sha string) (Parsed, error) {
 				seenTitle = true
 				continue
 			}
+			switch classifyHeading(trimmed) {
+			case headingCanonical:
+				pageHead.canonical = true
+			case headingFields:
+				pageHead.fields = true
+			case headingValue:
+				pageHead.value = true
+			case headingBad:
+				return Parsed{}, statusErr(StatusMalformedDocument, "quotation columns are missing or not in Bid Ask Open High Low Close Volume order")
+			}
 			noteSection(trimmed, &st)
 			if !st.extract || strings.Contains(trimmed, "TOTAL") {
 				continue
 			}
-			row, ok := parseQuoteLine(trimmed, pageNo, lineNo+1, session, sha, st)
-			if ok {
+			kind, row := classifyQuoteLine(trimmed, pageNo, lineNo+1, session, sha, st)
+			switch kind {
+			case quoteIgnore:
+			case quoteBroken:
+				return Parsed{}, statusErr(StatusPartialParse, "malformed security row: "+trimmed)
+			case quoteRow:
+				if !pageHead.ready() {
+					return Parsed{}, statusErr(StatusMalformedDocument, "quotation columns were not established before a security row")
+				}
 				candidates = append(candidates, row)
 			}
 		}
@@ -61,6 +79,9 @@ func ParseLayout(text string, expected time.Time, sha string) (Parsed, error) {
 	}
 	if !seenDate {
 		return Parsed{}, statusErr(StatusWrongSessionDate, "missing session date line")
+	}
+	if !strings.Contains(text, "GRAND TOTAL") {
+		return Parsed{}, statusErr(StatusPartialParse, "report ended before GRAND TOTAL")
 	}
 	if len(candidates) == 0 {
 		return Parsed{}, statusErr(StatusPartialParse, "heading matched but no security rows were parsed")
@@ -104,27 +125,105 @@ func noteSection(line string, st *scanState) {
 	}
 }
 
-func parseQuoteLine(line string, page, lineNo int, session, sha string, st scanState) (Row, bool) {
+const (
+	headingNone = iota
+	headingCanonical
+	headingFields
+	headingValue
+	headingBad
+)
+
+const (
+	quoteIgnore = iota
+	quoteRow
+	quoteBroken
+)
+
+var canonicalColumns = []string{"Bid", "Ask", "Open", "High", "Low", "Close", "Volume"}
+
+type pageColumns struct {
+	canonical bool
+	fields    bool
+	value     bool
+}
+
+func (p pageColumns) ready() bool {
+	return p.canonical || (p.fields && p.value)
+}
+
+func classifyHeading(line string) int {
+	cols := columnNames(line)
+	if len(cols) == 0 {
+		return headingNone
+	}
+	if sameWords(cols, canonicalColumns) {
+		return headingCanonical
+	}
+	if sameWords(cols, canonicalColumns[:6]) {
+		return headingFields
+	}
+	if len(cols) == 1 && cols[0] == "Volume" && strings.Contains(line, "Value") {
+		return headingValue
+	}
+	if len(cols) >= 4 {
+		return headingBad
+	}
+	return headingNone
+}
+
+func columnNames(line string) []string {
+	var cols []string
+	for _, field := range strings.Fields(line) {
+		word := strings.Trim(field, ",")
+		switch word {
+		case "Bid", "Ask", "Open", "High", "Low", "Close", "Volume":
+			cols = append(cols, word)
+		}
+	}
+	return cols
+}
+
+func sameWords(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func classifyQuoteLine(line string, page, lineNo int, session, sha string, st scanState) (int, Row) {
 	fields := strings.Fields(line)
 	if len(fields) < 10 {
-		return Row{}, false
+		return quoteIgnore, Row{}
 	}
 	start := len(fields) - 9
-	measures := make([]Measure, 9)
-	for i := 0; i < 9; i++ {
-		m, ok := parseMeasure(fields[start+i])
-		if !ok {
-			return Row{}, false
-		}
-		measures[i] = m
-	}
 	sym := fields[start-1]
-	if !symbolRe.MatchString(sym) || start-1 == 0 {
-		return Row{}, false
+	if !symbolRe.MatchString(sym) || start == 1 {
+		return quoteIgnore, Row{}
 	}
 	name := strings.Join(fields[:start-1], " ")
 	if name == "" || strings.Contains(name, "TOTAL") {
-		return Row{}, false
+		return quoteIgnore, Row{}
+	}
+	measures := make([]Measure, 9)
+	valid := 0
+	for i := 0; i < 9; i++ {
+		m, ok := parseMeasure(fields[start+i])
+		if !ok {
+			continue
+		}
+		measures[i] = m
+		valid++
+	}
+	if valid < 9 {
+		if valid >= 6 {
+			return quoteBroken, Row{}
+		}
+		return quoteIgnore, Row{}
 	}
 	fieldsNames := []string{"bid", "ask", "open", "high", "low", "close", "volume", "value", "net_foreign"}
 	status := make(map[string]string, len(fieldsNames))
@@ -133,7 +232,7 @@ func parseQuoteLine(line string, page, lineNo int, session, sha string, st scanS
 		status[field] = measures[i].Status
 		vals[i] = measures[i].Value
 	}
-	return Row{
+	return quoteRow, Row{
 		Symbol:        sym,
 		IssueName:     name,
 		Board:         st.board,
@@ -154,7 +253,7 @@ func parseQuoteLine(line string, page, lineNo int, session, sha string, st scanS
 		Value:         vals[7],
 		NetForeign:    vals[8],
 		FieldStatus:   status,
-	}, true
+	}
 }
 
 func parseMeasure(tok string) (Measure, bool) {

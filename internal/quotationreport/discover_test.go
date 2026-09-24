@@ -113,6 +113,52 @@ func TestListingWithoutTargetIsNotYesterday(t *testing.T) {
 	}
 }
 
+func TestTruncatedPDFIsNotAdmitted(t *testing.T) {
+	if _, err := exec.LookPath("pdfseparate"); err != nil {
+		t.Skip("pdfseparate is required to build a one-page PDF")
+	}
+	if _, err := exec.LookPath("pdftotext"); err != nil {
+		t.Skip("pdftotext is required")
+	}
+	dir := t.TempDir()
+	sep := exec.Command("pdfseparate", "-f", "1", "-l", "1", "testdata/20260924-eod.pdf", dir+"/page-%d.pdf")
+	if err := sep.Run(); err != nil {
+		t.Fatal(err)
+	}
+	page := dir + "/page-1.pdf"
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/market-report/":
+			w.Write([]byte(listingPage(srv.URL + "/ajax")))
+		case "/ajax":
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(ajaxPayload([]ajaxRow{{
+				Title: "September 24, 2026", Categories: `<span data-slug="end-of-day-quotes">End of Day Quotes</span>`, Date: "September 24, 2026", Content: `<a href="` + srv.URL + `/page1.pdf">x</a>`,
+			}}))
+		case "/page1.pdf":
+			raw, err := os.ReadFile(page)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Write(raw)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	session := time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC)
+	root := t.TempDir()
+	report, err := Fetch(context.Background(), root, srv.URL+"/market-report/", session, nil, session)
+	if err == nil || statusOf(err) != StatusPartialParse || report.Status != StatusPartialParse {
+		t.Fatalf("err=%v status=%s", err, report.Status)
+	}
+	if _, ok, readErr := ReadCurrent(root, "2026-09-24"); readErr != nil || ok {
+		t.Fatalf("truncated report was admitted ok=%v err=%v", ok, readErr)
+	}
+}
+
 func TestLiveQuotationReport(t *testing.T) {
 	if os.Getenv("PSE_EDGE_QUOTATION_LIVE") != "1" {
 		t.Skip("set PSE_EDGE_QUOTATION_LIVE=1 for one bounded live read")

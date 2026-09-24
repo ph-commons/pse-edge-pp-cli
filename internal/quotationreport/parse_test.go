@@ -16,11 +16,13 @@ import (
 
 func TestParseSyntheticCases(t *testing.T) {
 	session := time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC)
+	header := "Issue Name Symbol Bid Ask Open High Low Close Volume Value, PHP"
 	text := strings.Join([]string{
 		"The Philippine Stock Exchange, Inc.",
 		"Daily Quotation Report",
 		"September 24, 2026",
 		"MAIN BOARD",
+		header,
 		"BDO UNIBANK BDO 111.3 111.5 113.5 114 110.1 111.3 2,146,520 240,105,096 (65,122,622)",
 		"DOMINION HLDG DHI - - - - - - - - -",
 		"FINANCIALS SECTOR TOTAL 55,300,030 724,870,328",
@@ -31,7 +33,9 @@ func TestParseSyntheticCases(t *testing.T) {
 		"The Philippine Stock Exchange, Inc.",
 		"Daily Quotation Report",
 		"September 24, 2026",
+		header,
 		"MERALCO MER 446.4 447 463.2 466.4 445 447 322,680 144,774,416 12,835,624",
+		"GRAND TOTAL 1 2",
 	}, "\n")
 	parsed, err := ParseLayout(text, session, "abc")
 	if err != nil {
@@ -79,9 +83,46 @@ func TestParseRejectsWrongDateAndGarbage(t *testing.T) {
 	if _, err := ParseLayout("not a report\n", session, "x"); err == nil || statusOf(err) != StatusMalformedDocument {
 		t.Fatalf("garbage err=%v", err)
 	}
-	empty := "Daily Quotation Report\nSeptember 24, 2026\nMAIN BOARD\n"
+	empty := "Daily Quotation Report\nSeptember 24, 2026\nMAIN BOARD\nGRAND TOTAL 1 2\n"
 	if _, err := ParseLayout(empty, session, "x"); err == nil || statusOf(err) != StatusPartialParse {
 		t.Fatalf("partial err=%v", err)
+	}
+}
+
+func TestParseRejectsPartialAndBadColumns(t *testing.T) {
+	session := time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC)
+	header := "Issue Name Symbol Bid Ask Open High Low Close Volume Value, PHP"
+	base := strings.Join([]string{
+		"Daily Quotation Report",
+		"September 24, 2026",
+		header,
+		"BDO UNIBANK BDO 1 2 3 4 5 6 7 8 9",
+	}, "\n")
+	if _, err := ParseLayout(base, session, "x"); err == nil || statusOf(err) != StatusPartialParse {
+		t.Fatalf("truncated err=%v", err)
+	}
+	broken := base + "\nALPHA AAA 1 2 3 4 5 BROKEN 7 8 9\nGRAND TOTAL 1 2\n"
+	if _, err := ParseLayout(broken, session, "x"); err == nil || statusOf(err) != StatusPartialParse || !strings.Contains(err.Error(), "malformed security row") {
+		t.Fatalf("broken err=%v", err)
+	}
+	missing := strings.Join([]string{
+		"Daily Quotation Report",
+		"September 24, 2026",
+		"ALPHA AAA 1 2 3 4 5 6 7 8 9",
+		"GRAND TOTAL 1 2",
+	}, "\n")
+	if _, err := ParseLayout(missing, session, "x"); err == nil || statusOf(err) != StatusMalformedDocument {
+		t.Fatalf("missing header err=%v", err)
+	}
+	reordered := strings.Join([]string{
+		"Daily Quotation Report",
+		"September 24, 2026",
+		"Issue Symbol Bid Ask Open High Low Volume Close Value NetForeign",
+		"ALPHA AAA 1 2 3 4 5 600 7 8 9",
+		"GRAND TOTAL 1 2",
+	}, "\n")
+	if _, err := ParseLayout(reordered, session, "x"); err == nil || statusOf(err) != StatusMalformedDocument {
+		t.Fatalf("reordered err=%v", err)
 	}
 }
 

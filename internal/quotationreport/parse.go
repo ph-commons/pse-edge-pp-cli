@@ -47,18 +47,11 @@ func ParseLayout(text string, expected time.Time, sha string) (Parsed, error) {
 				seenTitle = true
 				continue
 			}
-			switch classifyHeading(trimmed) {
-			case headingCanonical:
-				pageHead.canonical = true
-			case headingFields:
-				pageHead.fields = true
-			case headingValue:
-				pageHead.value = true
-			case headingBad:
-				return Parsed{}, statusErr(StatusMalformedDocument, "quotation columns are missing or not in Bid Ask Open High Low Close Volume order")
-			}
 			noteSection(trimmed, &st)
-			if !st.extract || strings.Contains(trimmed, "TOTAL") {
+			if pageHead.add(line) {
+				continue
+			}
+			if !st.extract || strings.Contains(trimmed, "TOTAL") || strings.HasPrefix(trimmed, "Note:") {
 				continue
 			}
 			kind, row := classifyQuoteLine(trimmed, pageNo, lineNo+1, session, sha, st)
@@ -68,7 +61,7 @@ func ParseLayout(text string, expected time.Time, sha string) (Parsed, error) {
 				return Parsed{}, statusErr(StatusPartialParse, "malformed security row: "+trimmed)
 			case quoteRow:
 				if !pageHead.ready() {
-					return Parsed{}, statusErr(StatusMalformedDocument, "quotation columns were not established before a security row")
+					return Parsed{}, statusErr(StatusMalformedDocument, "quotation columns are missing or not in Bid Ask Open High Low Close Volume Value NetForeign order")
 				}
 				candidates = append(candidates, row)
 			}
@@ -126,104 +119,78 @@ func noteSection(line string, st *scanState) {
 }
 
 const (
-	headingNone = iota
-	headingCanonical
-	headingFields
-	headingValue
-	headingBad
-)
-
-const (
 	quoteIgnore = iota
 	quoteRow
 	quoteBroken
 )
 
-var canonicalColumns = []string{"Bid", "Ask", "Open", "High", "Low", "Close", "Volume"}
+var canonicalColumns = []string{"Bid", "Ask", "Open", "High", "Low", "Close", "Volume", "Value", "NetForeign"}
+var columnRe = regexp.MustCompile(`\b(Bid|Ask|Open|High|Low|Close|Volume|Value|NetForeign|Net Foreign|Buying/\(Selling\))`)
 
-type pageColumns struct {
-	canonical bool
-	fields    bool
-	value     bool
+type columnPosition struct{ first, last int }
+type pageColumns map[string]columnPosition
+
+// Keep horizontal positions when headings wrap onto multiple lines. Merely
+// collecting recognized words would miss a Value or Net Foreign column move.
+func (p pageColumns) add(line string) bool {
+	matches := columnRe.FindAllStringIndex(line, -1)
+	for _, match := range matches {
+		name := line[match[0]:match[1]]
+		if name == "Net Foreign" || name == "Buying/(Selling)" {
+			name = "NetForeign"
+		}
+		pos, exists := p[name]
+		if !exists {
+			pos = columnPosition{match[0], match[0]}
+		}
+		if match[0] < pos.first {
+			pos.first = match[0]
+		}
+		if match[0] > pos.last {
+			pos.last = match[0]
+		}
+		p[name] = pos
+	}
+	return len(matches) > 0
 }
 
 func (p pageColumns) ready() bool {
-	return p.canonical || (p.fields && p.value)
-}
-
-func classifyHeading(line string) int {
-	cols := columnNames(line)
-	if len(cols) == 0 {
-		return headingNone
-	}
-	if sameWords(cols, canonicalColumns) {
-		return headingCanonical
-	}
-	if sameWords(cols, canonicalColumns[:6]) {
-		return headingFields
-	}
-	if len(cols) == 1 && cols[0] == "Volume" && strings.Contains(line, "Value") {
-		return headingValue
-	}
-	if len(cols) >= 4 {
-		return headingBad
-	}
-	return headingNone
-}
-
-func columnNames(line string) []string {
-	var cols []string
-	for _, field := range strings.Fields(line) {
-		word := strings.Trim(field, ",")
-		switch word {
-		case "Bid", "Ask", "Open", "High", "Low", "Close", "Volume":
-			cols = append(cols, word)
-		}
-	}
-	return cols
-}
-
-func sameWords(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
+	previous := -1
+	for _, name := range canonicalColumns {
+		pos, ok := p[name]
+		if !ok || pos.first <= previous {
 			return false
 		}
+		previous = pos.last
 	}
 	return true
 }
 
 func classifyQuoteLine(line string, page, lineNo int, session, sha string, st scanState) (int, Row) {
 	fields := strings.Fields(line)
-	if len(fields) < 10 {
+	// Find the identity/measure boundary without assuming nine measures.
+	// A missing token must fail the report, not move the inferred symbol.
+	start := -1
+	for i := 2; i < len(fields); i++ {
+		if _, ok := parseMeasure(fields[i]); ok && symbolRe.MatchString(fields[i-1]) {
+			start = i
+		}
+	}
+	if start == -1 {
 		return quoteIgnore, Row{}
 	}
-	start := len(fields) - 9
 	sym := fields[start-1]
-	if !symbolRe.MatchString(sym) || start == 1 {
-		return quoteIgnore, Row{}
-	}
 	name := strings.Join(fields[:start-1], " ")
-	if name == "" || strings.Contains(name, "TOTAL") {
-		return quoteIgnore, Row{}
+	if len(fields)-start != 9 {
+		return quoteBroken, Row{}
 	}
 	measures := make([]Measure, 9)
-	valid := 0
-	for i := 0; i < 9; i++ {
+	for i := range measures {
 		m, ok := parseMeasure(fields[start+i])
 		if !ok {
-			continue
-		}
-		measures[i] = m
-		valid++
-	}
-	if valid < 9 {
-		if valid >= 6 {
 			return quoteBroken, Row{}
 		}
-		return quoteIgnore, Row{}
+		measures[i] = m
 	}
 	fieldsNames := []string{"bid", "ask", "open", "high", "low", "close", "volume", "value", "net_foreign"}
 	status := make(map[string]string, len(fieldsNames))

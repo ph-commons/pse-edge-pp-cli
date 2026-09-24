@@ -16,6 +16,9 @@ about to scrape that PDF itself.
 - Parse with `pdftotext -layout` into `pse-edge-quotation-report-v1`.
 - A dash is null `reported_dash`. Do not write these rows into `pse_eod_prices`
   or change `pse-edge-export-eod-v1`.
+- Identify the security/measure boundary independently of the expected nine
+  measures; a missing or broken measure must reject the report. Validate all
+  nine column headings by horizontal position, including multiline headings.
 - Same bytes do not add a revision. A new hash keeps the previous PDF.
 
 ## Files

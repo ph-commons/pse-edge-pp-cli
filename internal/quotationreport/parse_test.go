@@ -16,7 +16,7 @@ import (
 
 func TestParseSyntheticCases(t *testing.T) {
 	session := time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC)
-	header := "Issue Name Symbol Bid Ask Open High Low Close Volume Value, PHP"
+	header := "Issue Name Symbol Bid Ask Open High Low Close Volume Value, PHP NetForeign"
 	text := strings.Join([]string{
 		"The Philippine Stock Exchange, Inc.",
 		"Daily Quotation Report",
@@ -91,7 +91,7 @@ func TestParseRejectsWrongDateAndGarbage(t *testing.T) {
 
 func TestParseRejectsPartialAndBadColumns(t *testing.T) {
 	session := time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC)
-	header := "Issue Name Symbol Bid Ask Open High Low Close Volume Value, PHP"
+	header := "Issue Name Symbol Bid Ask Open High Low Close Volume Value, PHP NetForeign"
 	base := strings.Join([]string{
 		"Daily Quotation Report",
 		"September 24, 2026",
@@ -158,7 +158,7 @@ func TestSeptember24Fixture(t *testing.T) {
 	if len(parsed.Ambiguous) != 0 {
 		t.Fatalf("ambiguous=%+v", parsed.Ambiguous)
 	}
-	if len(parsed.Rows) < 350 {
+	if len(parsed.Rows) != 383 {
 		t.Fatalf("rows=%d", len(parsed.Rows))
 	}
 	by := map[string]Row{}
@@ -198,5 +198,59 @@ func TestSeptember24Fixture(t *testing.T) {
 	}
 	if len(cov.PresentNullClose) != 1 || cov.PresentNullClose[0] != "DHI" {
 		t.Fatalf("null close=%v", cov.PresentNullClose)
+	}
+}
+
+func TestRejectsMissingFixtureMeasure(t *testing.T) {
+	layout, err := os.ReadFile("testdata/20260924-eod.layout.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(layout), "\n")
+	for i, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) > 1 && fields[0] == "MERALCO" && fields[1] == "MER" {
+			// Remove the close without changing any other part of the complete report.
+			lines[i] = strings.Join(append(fields[:7], fields[8:]...), " ")
+			_, err := ParseLayout(strings.Join(lines, "\n"), time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC), "x")
+			if err == nil || statusOf(err) != StatusPartialParse {
+				t.Fatalf("missing MER close: %v", err)
+			}
+			return
+		}
+	}
+	t.Fatal("MER fixture row not found")
+}
+
+func TestRejectsIncompleteOrReorderedFullSchema(t *testing.T) {
+	for _, header := range []string{
+		"Issue Symbol Bid Ask Open High Low Value Close Volume NetForeign",
+		"Issue Symbol Bid Ask Open High Low Close Volume NetForeign Value",
+		"Issue Symbol Bid Ask Open High Low Close Volume Value",
+		"Issue Symbol Bid Ask Open High Low Close Volume\nValue NetForeign",
+	} {
+		t.Run(header, func(t *testing.T) {
+			text := "Daily Quotation Report\nSeptember 24, 2026\n" + header + "\nALPHA AAA 1 2 3 4 5 800 6 700 9\nGRAND TOTAL 1 2"
+			_, err := ParseLayout(text, time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC), "x")
+			if err == nil || statusOf(err) != StatusMalformedDocument {
+				t.Fatalf("unsupported columns: %v", err)
+			}
+		})
+	}
+}
+
+func TestRejectsReorderedMultilineFixtureHeader(t *testing.T) {
+	layout, err := os.ReadFile("testdata/20260924-eod.layout.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := "Volume               Value, USD"
+	if !strings.Contains(string(layout), original) {
+		t.Fatal("DDS header not found")
+	}
+	text := strings.Replace(string(layout), original, "Value, USD           Volume", 1)
+	_, err = ParseLayout(text, time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC), "x")
+	if err == nil || statusOf(err) != StatusMalformedDocument {
+		t.Fatalf("reordered multiline DDS header: %v", err)
 	}
 }

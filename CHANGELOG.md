@@ -15,7 +15,7 @@ automation for this independent repo (that rule applies only when publishing
 
 ### Added
 
-- `quotation-report --date YYYYMMDD` reads the official PSE Daily Quotation Report for that session. The command discovers the End of Day Quotes PDF from the market-report listing, keeps the original bytes and SHA-256, and emits contract `pse-edge-quotation-report-v1` (symbol, OHLC, volume, value, net foreign, page/row locator, provenance). A dash is null `reported_dash`, not a zero or a suspension. A file that ends before `GRAND TOTAL`, a security row with a broken number, or column headings that are missing or reordered is not admitted. This does not change `history` or `pse-edge-export-eod-v1`. PDF text needs Poppler `pdftotext`. `acquired_at` is the only clock ([#56](https://github.com/ph-commons/pse-edge-pp-cli/issues/56)).
+- `quotation-report --date YYYYMMDD` reads the official PSE Daily Quotation Report for that session. The command discovers the End of Day Quotes PDF from the market-report listing, keeps the original bytes and SHA-256, and emits contract `pse-edge-quotation-report-v1` (symbol, OHLC, volume, value, net foreign, page/row locator, provenance). A dash is null `reported_dash`, not a zero or a suspension. A file that ends before `GRAND TOTAL`, a security row with a missing or broken number, or any of the nine column headings missing or reordered (including multiline headings) is not admitted. This does not change `history` or `pse-edge-export-eod-v1`. PDF text needs Poppler `pdftotext`. `acquired_at` is the only clock ([#56](https://github.com/ph-commons/pse-edge-pp-cli/issues/56)).
 
 ## [0.1.7] - 2026-09-24
 

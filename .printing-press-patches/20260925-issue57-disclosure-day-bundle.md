@@ -14,6 +14,12 @@ document` are not that bundle.
   `corpus_complete` is always false.
 - Keep original bytes. Text is a sidecar. Revisions do not overwrite.
 - Failures retry until `--max-attempts` when no bytes are retained.
+- A recovered or older-hash response records a current successful observation
+  without duplicating retained bytes. Unchanged successful reruns add no entry.
+- Missing body IDs mark the viewer failed and bundle partial; available
+  attachments still download.
+- Use `os.Root` for bundle reads and writes, including manifest temporary files.
+  Exclusive creation protects retained originals and rejects existing temp files.
 
 ## Files
 

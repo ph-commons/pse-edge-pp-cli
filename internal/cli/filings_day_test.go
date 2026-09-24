@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -421,5 +422,132 @@ func TestFilingsDayHelpAndDate(t *testing.T) {
 	}
 	if code := ExitCode(apiErr(errDayDiscovery)); code != 5 {
 		t.Fatalf("discovery exit = %d", code)
+	}
+}
+
+func TestCollectDisclosureDayRecoveryAndEarlierRevision(t *testing.T) {
+	original := []byte("<html>original</html>")
+	revised := []byte("<html>revised</html>")
+	src := &fakeDaySource{
+		pages:   map[string][]*pseedge.DisclosurePage{"": {page(1, 1, row(dayEdgeA, 1, "2026-09-24T10:00:00+08:00"))}},
+		viewers: map[string]*pseedge.DisclosureViewer{dayEdgeA: viewer(dayEdgeA, "100")},
+		docs: map[string][]fakeDoc{"100": {
+			{body: original}, {err: errors.New("temporary outage")}, {body: original},
+			{body: original}, {body: revised}, {body: original}, {body: original},
+		}},
+	}
+	opt := dayOpts(t.TempDir(), manilaDay(2026, 9, 25, 9), manilaDay(2026, 9, 24, 0), nil, 40, 3)
+	wantCounts := []int{1, 2, 3, 3, 4, 5, 5}
+	for i, count := range wantCounts {
+		m, err := collectDisclosureDay(context.Background(), src, opt)
+		if i == 1 {
+			if !errors.Is(err, errDayPartial) || m.Summary.ArtifactsFailed != 1 {
+				t.Fatalf("outage: error=%v summary=%+v", err, m.Summary)
+			}
+			continue
+		}
+		if err != nil || m.Summary.Partial || m.Summary.ArtifactsOK != 1 || m.Summary.ArtifactsFailed != 0 {
+			t.Fatalf("run %d: error=%v summary=%+v", i+1, err, m.Summary)
+		}
+		arts := m.Filings[0].Artifacts
+		if len(arts) != count {
+			t.Fatalf("run %d: %d observations, want %d", i+1, len(arts), count)
+		}
+		want := original
+		if i == 4 {
+			want = revised
+		}
+		latest := arts[len(arts)-1]
+		sum := sha256.Sum256(want)
+		if latest.SHA256 != hex.EncodeToString(sum[:]) {
+			t.Fatalf("run %d: latest hash does not match observed bytes: %+v", i+1, latest)
+		}
+		body, err := os.ReadFile(filepath.Join(opt.OutDir, filepath.FromSlash(latest.RelativePath)))
+		if err != nil || string(body) != string(want) {
+			t.Fatalf("retained observation: %q %v", body, err)
+		}
+	}
+	files, err := filepath.Glob(filepath.Join(opt.OutDir, "files", dayEdgeA, "*.bin"))
+	if err != nil || len(files) != 2 {
+		t.Fatalf("duplicate bytes: %v %v", files, err)
+	}
+	body, err := os.ReadFile(filepath.Join(opt.OutDir, "files", dayEdgeA, "100.bin"))
+	if err != nil || string(body) != string(original) {
+		t.Fatalf("original changed: %q %v", body, err)
+	}
+}
+
+func TestCollectDisclosureDayMissingBody(t *testing.T) {
+	for _, attachments := range []bool{false, true} {
+		t.Run(fmt.Sprintf("attachments=%t", attachments), func(t *testing.T) {
+			v, err := pseedge.ParseDisclosureViewer(dayEdgeA, `<html><div id="viewHeader"><h2>Company</h2></div><title>Filing</title></html>`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if attachments {
+				v.Attachments = []pseedge.DisclosureAttachment{{FileID: "201", Label: "Annex"}}
+			}
+			src := &fakeDaySource{
+				pages:   map[string][]*pseedge.DisclosurePage{"": {page(1, 1, row(dayEdgeA, 1, "2026-09-24T10:00:00+08:00"))}},
+				viewers: map[string]*pseedge.DisclosureViewer{dayEdgeA: v},
+				docs:    map[string][]fakeDoc{"201": {{body: []byte("<html>annex</html>")}}},
+			}
+			opt := dayOpts(t.TempDir(), manilaDay(2026, 9, 25, 9), manilaDay(2026, 9, 24, 0), nil, 40, 3)
+			m, err := collectDisclosureDay(context.Background(), src, opt)
+			if !errors.Is(err, errDayPartial) || !m.Summary.Partial || m.Filings[0].ViewerStatus != "failed" || !strings.Contains(m.Filings[0].ViewerError, "body unavailable") {
+				t.Fatalf("missing body: error=%v manifest=%+v", err, m)
+			}
+			if attachments {
+				body, err := os.ReadFile(filepath.Join(opt.OutDir, "files", dayEdgeA, "201.bin"))
+				if err != nil || string(body) != "<html>annex</html>" || m.Summary.ArtifactsOK != 1 {
+					t.Fatalf("attachment lost: %q %v", body, err)
+				}
+			}
+		})
+	}
+}
+
+func TestCollectDisclosureDaySymlinkContainment(t *testing.T) {
+	for _, location := range []string{"files", filepath.Join("files", dayEdgeA), filepath.Join("files", dayEdgeA, "100.bin"), "manifest.json", "manifest.json.tmp"} {
+		t.Run(location, func(t *testing.T) {
+			dir, outside := t.TempDir(), t.TempDir()
+			link := filepath.Join(dir, location)
+			if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			target := outside
+			if strings.HasSuffix(location, ".bin") || strings.HasPrefix(location, "manifest") {
+				target = filepath.Join(outside, "sentinel")
+				if err := os.WriteFile(target, []byte("original"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.Symlink(target, link); err != nil {
+				t.Fatal(err)
+			}
+			src := &fakeDaySource{
+				pages:   map[string][]*pseedge.DisclosurePage{"": {page(1, 1, row(dayEdgeA, 1, "2026-09-24T10:00:00+08:00"))}},
+				viewers: map[string]*pseedge.DisclosureViewer{dayEdgeA: viewer(dayEdgeA, "100")},
+				docs:    map[string][]fakeDoc{"100": {{body: []byte("<html>original</html>")}}},
+			}
+			_, err := collectDisclosureDay(context.Background(), src, dayOpts(dir, manilaDay(2026, 9, 25, 9), manilaDay(2026, 9, 24, 0), nil, 40, 3))
+			if err == nil {
+				t.Fatal("escaping path accepted")
+			}
+			entries, err := os.ReadDir(outside)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if target == outside {
+				if len(entries) != 0 {
+					t.Fatalf("created outside files: %v", entries)
+				}
+			} else {
+				body, err := os.ReadFile(target)
+				if err != nil || string(body) != "original" || len(entries) != 1 {
+					t.Fatalf("outside modified: %q %v entries=%v", body, err, entries)
+				}
+			}
+		})
 	}
 }

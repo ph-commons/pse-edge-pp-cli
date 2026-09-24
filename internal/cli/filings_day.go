@@ -323,7 +323,12 @@ func collectDisclosureDay(ctx context.Context, src daySource, opt dayCollectOpti
 	if err := os.MkdirAll(absOut, 0o755); err != nil {
 		return dayManifest{}, fmt.Errorf("creating --out: %w", err)
 	}
-	prior, err := loadDayManifest(absOut)
+	root, err := os.OpenRoot(absOut)
+	if err != nil {
+		return dayManifest{}, fmt.Errorf("opening --out: %w", err)
+	}
+	defer root.Close()
+	prior, err := loadDayManifest(root)
 	if err != nil {
 		return dayManifest{}, err
 	}
@@ -422,7 +427,7 @@ func collectDisclosureDay(ctx context.Context, src daySource, opt dayCollectOpti
 	partial := !discovery.SearchComplete
 	if pagesScanned == 0 {
 		manifest = summarizeDay(manifest)
-		if err := saveDayManifest(absOut, manifest); err != nil {
+		if err := saveDayManifest(root, manifest); err != nil {
 			return manifest, err
 		}
 		return manifest, fmt.Errorf("%w: %s", errDayDiscovery, strings.Join(discovery.Failures, "; "))
@@ -447,12 +452,17 @@ func collectDisclosureDay(ctx context.Context, src daySource, opt dayCollectOpti
 		}
 		filing.ViewerStatus = "ok"
 		filing.ViewerError = ""
+		if strings.TrimSpace(viewer.DocumentFileID) == "" {
+			filing.ViewerStatus = "failed"
+			filing.ViewerError = "disclosure body unavailable: viewer has no document file ID"
+			partial = true
+		}
 		if filing.ViewerURL == "" {
 			filing.ViewerURL = viewer.ViewerURL
 		}
 		files := dayFileList(viewer)
 		for _, item := range files {
-			art, failed := retainDayFile(ctx, src, opt, absOut, filing, item, now)
+			art, failed := retainDayFile(ctx, src, opt, root, filing, item, now)
 			if art != nil {
 				filing.Artifacts = append(filing.Artifacts, *art)
 			}
@@ -462,7 +472,7 @@ func collectDisclosureDay(ctx context.Context, src daySource, opt dayCollectOpti
 		}
 	}
 	manifest = summarizeDay(manifest)
-	if err := saveDayManifest(absOut, manifest); err != nil {
+	if err := saveDayManifest(root, manifest); err != nil {
 		return manifest, err
 	}
 	if partial || manifest.Summary.Partial {
@@ -566,7 +576,7 @@ func mergeDayFilings(prior []dayFiling, rows []pseedge.Disclosure, symbols map[i
 	return out
 }
 
-func retainDayFile(ctx context.Context, src daySource, opt dayCollectOptions, outDir string, filing *dayFiling, item dayFileItem, now time.Time) (*dayArtifact, bool) {
+func retainDayFile(ctx context.Context, src daySource, opt dayCollectOptions, root *os.Root, filing *dayFiling, item dayFileItem, now time.Time) (*dayArtifact, bool) {
 	if !pseedge.ValidDocumentFileID(item.FileID) || !validEdgeNo(filing.EdgeNo) {
 		return &dayArtifact{
 			Role: item.Role, FileID: item.FileID, Label: item.Label,
@@ -574,7 +584,7 @@ func retainDayFile(ctx context.Context, src daySource, opt dayCollectOptions, ou
 			AcquiredAt: now.Format(time.RFC3339), Error: "unsafe file_id or edge_no",
 		}, true
 	}
-	hasBytes := matchingRetainedArtifact(filing.Artifacts, item.FileID, outDir) != nil
+	hasBytes := matchingRetainedArtifact(filing.Artifacts, item.FileID, root) != nil
 	attempts := failureAttempts(filing.Artifacts, item.FileID)
 	if !hasBytes && attempts >= opt.MaxAttempts {
 		return nil, true
@@ -611,33 +621,37 @@ func retainDayFile(ctx context.Context, src daySource, opt dayCollectOptions, ou
 	}
 	sum := sha256.Sum256(body)
 	digest := hex.EncodeToString(sum[:])
-	if existing := artifactWithHash(filing.Artifacts, item.FileID, digest, outDir); existing != nil {
-		return nil, false
+	if existing := artifactWithHash(filing.Artifacts, item.FileID, digest, root); existing != nil {
+		// Only append when the current observation changes. Keep the history and
+		// reuse retained bytes, including when the source returns an older revision.
+		for i := len(filing.Artifacts) - 1; i >= 0; i-- {
+			last := filing.Artifacts[i]
+			if last.FileID == item.FileID {
+				if last.SHA256 == digest {
+					return nil, false
+				}
+				break
+			}
+		}
+		recovered := *existing
+		recovered.Outcome = "unchanged"
+		recovered.AcquiredAt = acquired
+		recovered.Attempts = base.Attempts
+		return &recovered, false
 	}
 	name := item.FileID + ".bin"
 	outcome := "downloaded"
-	if hasOtherHash(filing.Artifacts, item.FileID, digest) || fileExistsDifferent(outDir, filing.EdgeNo, name, digest) {
+	if hasOtherHash(filing.Artifacts, item.FileID, digest) || fileExistsDifferent(root, filing.EdgeNo, name, digest) {
 		name = item.FileID + "." + digest[:12] + ".bin"
 		outcome = "revised"
 	}
 	rel := filepath.ToSlash(filepath.Join("files", filing.EdgeNo, name))
-	dest, err := containedJoin(outDir, "files", filing.EdgeNo, name)
-	if err != nil {
+	if err := root.MkdirAll(filepath.Dir(rel), 0o755); err != nil {
 		base.Outcome = "download_failed"
 		base.Error = err.Error()
 		return &base, true
 	}
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-		base.Outcome = "download_failed"
-		base.Error = err.Error()
-		return &base, true
-	}
-	if _, err := os.Stat(dest); err == nil {
-		base.Outcome = "download_failed"
-		base.Error = "refusing to overwrite " + rel
-		return &base, true
-	}
-	if err := os.WriteFile(dest, body, 0o644); err != nil {
+	if err := writeDayOriginal(root, rel, body); err != nil {
 		base.Outcome = "download_failed"
 		base.Error = err.Error()
 		return &base, true
@@ -655,14 +669,10 @@ func retainDayFile(ctx context.Context, src daySource, opt dayCollectOptions, ou
 		} else {
 			textName := strings.TrimSuffix(name, ".bin") + ".txt"
 			textRel := filepath.ToSlash(filepath.Join("files", filing.EdgeNo, textName))
-			textDest, destErr := containedJoin(outDir, "files", filing.EdgeNo, textName)
-			if destErr != nil {
-				base.TextOutcome = "failed"
-				base.TextError = destErr.Error()
-			} else if _, statErr := os.Stat(textDest); statErr == nil {
+			if _, statErr := root.Stat(textRel); statErr == nil {
 				base.TextOutcome = "extracted"
 				base.TextRelativePath = textRel
-			} else if writeErr := os.WriteFile(textDest, []byte(text), 0o644); writeErr != nil {
+			} else if writeErr := writeDayOriginal(root, textRel, []byte(text)); writeErr != nil {
 				base.TextOutcome = "failed"
 				base.TextError = writeErr.Error()
 			} else {
@@ -674,7 +684,7 @@ func retainDayFile(ctx context.Context, src daySource, opt dayCollectOptions, ou
 	return &base, false
 }
 
-func matchingRetainedArtifact(arts []dayArtifact, fileID, outDir string) *dayArtifact {
+func matchingRetainedArtifact(arts []dayArtifact, fileID string, root *os.Root) *dayArtifact {
 	for i := range arts {
 		art := &arts[i]
 		if art.FileID != fileID || art.SHA256 == "" || art.RelativePath == "" {
@@ -683,17 +693,17 @@ func matchingRetainedArtifact(arts []dayArtifact, fileID, outDir string) *dayArt
 		if art.Outcome != "downloaded" && art.Outcome != "revised" && art.Outcome != "unchanged" {
 			continue
 		}
-		if fileHashMatches(outDir, art.RelativePath, art.SHA256) {
+		if fileHashMatches(root, art.RelativePath, art.SHA256) {
 			return art
 		}
 	}
 	return nil
 }
 
-func artifactWithHash(arts []dayArtifact, fileID, digest, outDir string) *dayArtifact {
+func artifactWithHash(arts []dayArtifact, fileID, digest string, root *os.Root) *dayArtifact {
 	for i := range arts {
 		art := &arts[i]
-		if art.FileID == fileID && art.SHA256 == digest && art.RelativePath != "" && fileHashMatches(outDir, art.RelativePath, digest) {
+		if art.FileID == fileID && art.SHA256 == digest && art.RelativePath != "" && fileHashMatches(root, art.RelativePath, digest) {
 			return art
 		}
 	}
@@ -725,12 +735,19 @@ func failureAttempts(arts []dayArtifact, fileID string) int {
 	return n
 }
 
-func fileExistsDifferent(outDir, edgeNo, name, digest string) bool {
-	path, err := containedJoin(outDir, "files", edgeNo, name)
+// Exclusive creation preserves original evidence even if a destination appears
+// between a read and a write. Root keeps all file access inside the bundle.
+func writeDayOriginal(root *os.Root, name string, body []byte) error {
+	file, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		return false
+		return err
 	}
-	body, err := os.ReadFile(path)
+	_, writeErr := file.Write(body)
+	return errors.Join(writeErr, file.Close())
+}
+
+func fileExistsDifferent(root *os.Root, edgeNo, name, digest string) bool {
+	body, err := root.ReadFile(filepath.Join("files", edgeNo, name))
 	if err != nil {
 		return false
 	}
@@ -738,16 +755,11 @@ func fileExistsDifferent(outDir, edgeNo, name, digest string) bool {
 	return hex.EncodeToString(sum[:]) != digest
 }
 
-func fileHashMatches(outDir, rel, digest string) bool {
-	if rel == "" || strings.Contains(rel, "..") {
+func fileHashMatches(root *os.Root, rel, digest string) bool {
+	if rel == "" {
 		return false
 	}
-	parts := strings.Split(filepath.FromSlash(rel), string(os.PathSeparator))
-	path, err := containedJoin(outDir, parts...)
-	if err != nil {
-		return false
-	}
-	body, err := os.ReadFile(path)
+	body, err := root.ReadFile(filepath.FromSlash(rel))
 	if err != nil {
 		return false
 	}
@@ -766,27 +778,6 @@ func validEdgeNo(edgeNo string) bool {
 		}
 	}
 	return true
-}
-
-func containedJoin(root string, parts ...string) (string, error) {
-	absRoot, err := filepath.Abs(root)
-	if err != nil {
-		return "", err
-	}
-	for _, part := range parts {
-		if part == "" || part == "." || part == ".." || strings.ContainsAny(part, `/\`) {
-			return "", fmt.Errorf("unsafe path segment %q", part)
-		}
-	}
-	joined := filepath.Join(append([]string{absRoot}, parts...)...)
-	rel, err := filepath.Rel(absRoot, joined)
-	if err != nil {
-		return "", err
-	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-		return "", fmt.Errorf("path escapes output directory")
-	}
-	return joined, nil
 }
 
 func summarizeDay(manifest dayManifest) dayManifest {
@@ -827,12 +818,8 @@ func summarizeDay(manifest dayManifest) dayManifest {
 	return manifest
 }
 
-func loadDayManifest(outDir string) (dayManifest, error) {
-	path, err := containedJoin(outDir, "manifest.json")
-	if err != nil {
-		return dayManifest{}, err
-	}
-	body, err := os.ReadFile(path)
+func loadDayManifest(root *os.Root) (dayManifest, error) {
+	body, err := root.ReadFile("manifest.json")
 	if errors.Is(err, os.ErrNotExist) {
 		return dayManifest{Filings: []dayFiling{}}, nil
 	}
@@ -849,19 +836,15 @@ func loadDayManifest(outDir string) (dayManifest, error) {
 	return manifest, nil
 }
 
-func saveDayManifest(outDir string, manifest dayManifest) error {
-	path, err := containedJoin(outDir, "manifest.json")
-	if err != nil {
-		return err
-	}
+func saveDayManifest(root *os.Root, manifest dayManifest) error {
 	body, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return err
 	}
 	body = append(body, '\n')
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, body, 0o644); err != nil {
+	tmp := "manifest.json.tmp"
+	if err := writeDayOriginal(root, tmp, body); err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	return root.Rename(tmp, "manifest.json")
 }

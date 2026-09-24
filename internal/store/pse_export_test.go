@@ -83,3 +83,42 @@ func TestStreamExportIndex(t *testing.T) {
 		t.Fatalf("%+v", rows[0])
 	}
 }
+
+// TestStreamExportIndexStatuses pins the change/breadth availability
+// contract: a close-only PSEI row reports unavailable on both, a composite
+// row with change + advances + declines reports ok on both.
+func TestStreamExportIndexStatuses(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(filepath.Join(t.TempDir(), "data.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.EnsurePSEEdgeTables(ctx); err != nil {
+		t.Fatal(err)
+	}
+	chg, pct := 33.89, 0.54
+	var adv, dec, unc int64 = 94, 75, 30
+	if err := s.UpsertPSEIndexSnapshots(ctx, []PSEIndexSnapshotRow{
+		// Close-only backfill row: value only.
+		{IndexCode: "PSEI", TradingDate: "2026-01-02", Value: 6000, Source: "edge"},
+		// Composite row: change + full breadth.
+		{IndexCode: "PSEI", TradingDate: "2026-01-03", Value: 6100, Change: &chg, PctChange: &pct, Advances: &adv, Declines: &dec, Unchanged: &unc, Source: "edge"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var rows []ExportIndexRow
+	n, err := s.StreamExportIndex(ctx, "2026-01-01", "2026-12-31", nil, 0, func(r ExportIndexRow) error {
+		rows = append(rows, r)
+		return nil
+	})
+	if err != nil || n != 2 {
+		t.Fatalf("n=%d err=%v", n, err)
+	}
+	if rows[0].ChangeStatus != "unavailable" || rows[0].BreadthStatus != "unavailable" {
+		t.Fatalf("close-only statuses = %q/%q, want unavailable/unavailable", rows[0].ChangeStatus, rows[0].BreadthStatus)
+	}
+	if rows[1].ChangeStatus != "ok" || rows[1].BreadthStatus != "ok" {
+		t.Fatalf("composite statuses = %q/%q, want ok/ok", rows[1].ChangeStatus, rows[1].BreadthStatus)
+	}
+}

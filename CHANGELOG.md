@@ -17,6 +17,7 @@ automation for this independent repo (that rule applies only when publishing
 
 - Installer no longer writes a self-referential `pp-pse-edge` link when the skills dir already exposes that skill (the fleet layout symlinks `~/.claude/skills` at the canonical skills tree). The duplicate link left git-tracked churn on every machine that syncs that tree. Real per-skill farms and any other layout still get wired.
 - `quote` keeps the edge leg when EDGE serves a direction-only change cell (`down (%)`), and a null `change` is never paired with a numeric `change_pct` — a phisix-only fallback now serves `change_pct: null` instead of `0` ([#52](https://github.com/ph-commons/pse-edge-pp-cli/issues/52)).
+- `sync market` persists the composite index snapshot (with breadth) for the last completed session the page reports, instead of only inside the post-close clock window, so local breadth no longer freezes on intraday or next-morning runs; `export index` adds `change_status`/`breadth_status` and `breadth` states when a window has no breadth-bearing sessions ([#53](https://github.com/ph-commons/pse-edge-pp-cli/issues/53)).
 
 ## [0.1.6] - 2026-09-08
 

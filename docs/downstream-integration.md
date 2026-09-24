@@ -85,8 +85,32 @@ Live `export companies` remains the **network** directory scrape (generated path
 
 ## 7. Foreign flows
 
-- **Not** in current tables or sync paths.
-- Not known to be available from the same free EDGE endpoints this CLI uses. Source separately (e.g. broker/PSE published reports) if required.
+- **Not** in `pse_eod_prices`, `export eod`, or the EDGE sync path.
+- Not known to be available from the same free EDGE endpoints this CLI uses.
+- The official Daily Quotation Report does print net foreign buying/(selling). Read it with `quotation-report`. Those values stay on contract `pse-edge-quotation-report-v1` and are not copied into chart history.
+
+## 7a. Daily Quotation Report
+
+```bash
+pse-edge-pp-cli quotation-report --date 20260924 --json
+pse-edge-pp-cli quotation-report --date 2026-09-24 --symbols AT,DHI --agent
+```
+
+| | |
+|---|---|
+| Contract | `pse-edge-quotation-report-v1` |
+| Source | PSE market-report listing, category End of Day Quotes |
+| Evidence | original PDF, SHA-256, discovery fields, `acquired_at` |
+| Dash | `null` with `field_status` `reported_dash`. Not a zero. Not a suspension. |
+| Missing symbol | `status: missing_symbols`, exit 3. The report can still be valid. |
+| Same bytes | `reused: true`. No second revision. |
+| New bytes | `revision: true` and `previous_sha256`. The earlier PDF stays on disk. |
+
+`status` is separate from a successful HTTP call. `listing_unavailable`, `report_unavailable`, `wrong_session_date`, `malformed_document`, `partial_parse`, `text_extractor_missing`, `ambiguous_identity`, and `conflicting_listing` are not an `ok` report.
+
+`acquired_at` is when this CLI stored the file. It does not claim the PSE published the report at 16:30.
+
+PDF text requires Poppler `pdftotext`. The listing's nonce and table id are read from the page on each fetch. They are not constants. A failed listing does not fall back to a guessed PDF URL or to yesterday's report.
 
 ## 8. History depth
 

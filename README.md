@@ -183,6 +183,14 @@ pse-edge-pp-cli export index --from 2025-01-01 --format jsonl
 
 Versioned JSONL contracts for private analytics pipelines (`pse-edge-export-eod-v1` / `pse-edge-export-index-v1`). Prefer this over reading `data.db` directly — see [docs/downstream-integration.md](docs/downstream-integration.md).
 
+### Official Daily Quotation Report
+
+```bash
+pse-edge-pp-cli quotation-report --date 20260924 --json
+```
+
+Session prices from the PSE End of Day Quotes PDF (`pse-edge-quotation-report-v1`). This is not `history` and not `export eod`. A dash is a null, not a zero. The CLI keeps the PDF and its SHA-256. `acquired_at` does not mean the file was ready at 16:30. Parsing needs Poppler `pdftotext`.
+
 ### Disclosure sweep with client-side keyword
 
 ```bash

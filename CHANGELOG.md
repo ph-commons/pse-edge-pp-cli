@@ -13,6 +13,8 @@ automation for this independent repo (that rule applies only when publishing
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-09-25
+
 ### Added
 
 - `filings day` downloads one Asia/Manila publication day's disclosure bodies and attachments into a local evidence bundle (`pse-edge-disclosure-day-v1`). Search discovery stays `announcements/search.ax` and never claims the official corpus is complete. Reruns keep original bytes, store changed files as revisions, and retry failures up to `--max-attempts` ([#57](https://github.com/ph-commons/pse-edge-pp-cli/issues/57)).

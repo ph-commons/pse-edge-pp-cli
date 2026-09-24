@@ -294,11 +294,16 @@ type Snapshot struct {
 	PrevCloseDate   string   `json:"prev_close_date,omitempty"` // YYYY-MM-DD
 	Change          *float64 `json:"change"`                    // signed; sign derived from up/down prefix
 	PctChange       *float64 `json:"pct_change"`
-	Volume          *float64 `json:"volume"`
-	Value           *float64 `json:"value"`
-	AvgPrice        *float64 `json:"avg_price"`
-	Week52High      *float64 `json:"week52_high"`
-	Week52Low       *float64 `json:"week52_low"`
+	// ChangeMagnitudeMissing records a direction-only change cell (the
+	// up/down word with an empty magnitude). The snapshot is otherwise
+	// valid, so callers must not read it as a blank (closed-session) cell.
+	// Not serialized (issue #52).
+	ChangeMagnitudeMissing bool     `json:"-"`
+	Volume                 *float64 `json:"volume"`
+	Value                  *float64 `json:"value"`
+	AvgPrice               *float64 `json:"avg_price"`
+	Week52High             *float64 `json:"week52_high"`
+	Week52Low              *float64 `json:"week52_low"`
 }
 
 var (
@@ -313,8 +318,10 @@ var (
 	// an unmatched "down" cannot be skipped by an unanchored match that
 	// then silently reports a positive change (issue #8). Percent group
 	// allows interior whitespace ("( 1.32%)") as currently served by EDGE.
+	// The direction-only alternative ("down (%)") accepts an empty magnitude
+	// as of issue #52; the up/down word alone still carries direction.
 	// Callers must strip tags then normalizeChangeCell (NBSP → space).
-	changeCellRE    = regexp.MustCompile(`(?is)(up|down)\s*([\d,\.]+)\s*\(\s*([\d,\.\-]+)\s*%\s*\)`)
+	changeCellRE    = regexp.MustCompile(`(?is)(up|down)\s*(?:([\d,\.]+)\s*\(\s*([\d,\.\-]+)\s*%\s*\)|\(\s*%\s*\))`)
 	prevCloseDateRE = regexp.MustCompile(`\(([A-Z][a-z]{2} \d{1,2}, \d{4})\)`)
 )
 
@@ -416,24 +423,32 @@ func ParseStockData(htmlBody string) (*Snapshot, error) {
 			}
 		}
 		if m != nil {
-			abs := parseFloatLoose(m[2])
-			pct := parseFloatLoose(strings.TrimSuffix(m[3], "%"))
-			sign := 1.0
-			if strings.EqualFold(m[1], "down") {
-				sign = -1.0
-			}
-			if abs != nil {
-				v := sign * *abs
-				snap.Change = &v
-			}
-			if pct != nil {
-				v := *pct
-				// The percent figure may print unsigned too; apply the
-				// same derived sign when it lacks an explicit minus.
-				if sign < 0 && v > 0 {
-					v = -v
+			if m[2] == "" && m[3] == "" {
+				// Direction-only cell: the up/down word with an empty
+				// magnitude. The snapshot is otherwise valid, so keep the
+				// leg and flag the missing magnitude rather than reading it
+				// as a blank (closed-session) cell.
+				snap.ChangeMagnitudeMissing = true
+			} else {
+				abs := parseFloatLoose(m[2])
+				pct := parseFloatLoose(strings.TrimSuffix(m[3], "%"))
+				sign := 1.0
+				if strings.EqualFold(m[1], "down") {
+					sign = -1.0
 				}
-				snap.PctChange = &v
+				if abs != nil {
+					v := sign * *abs
+					snap.Change = &v
+				}
+				if pct != nil {
+					v := *pct
+					// The percent figure may print unsigned too; apply the
+					// same derived sign when it lacks an explicit minus.
+					if sign < 0 && v > 0 {
+						v = -v
+					}
+					snap.PctChange = &v
+				}
 			}
 		}
 	}

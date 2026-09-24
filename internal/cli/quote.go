@@ -91,7 +91,9 @@ by more than 0.01, divergence:true is set, a warning goes to stderr, and
 the edge close wins. as_of is the last completed PH trading session per the
 trading calendar; before the 16:00 Asia/Manila close gate rows are marked
 stale. A blank edge change cell on a non-trading day is served as explicit
-nulls with a "closed-session" note, never zeros.`,
+nulls with a "closed-session" note, never zeros. A direction-only change
+cell keeps the edge leg and serves null change/change_pct; a numeric
+change_pct is never emitted beside a null change.`,
 		Example: `  pse-edge-pp-cli quote AT --json
   pse-edge-pp-cli quote AT GTCAP HTI --json --select symbol,close`,
 		Annotations: map[string]string{"mcp:read-only": "true"},
@@ -286,10 +288,11 @@ func fetchQuote(cmd *cobra.Command, flags *rootFlags, c *client.Client, dbPath, 
 			row.ChangePct = snap.PctChange
 		}
 
-		// Blank edge change cell = explicit closed-session state. (The
-		// parser hard-errors on a non-blank cell it cannot match, so nil
-		// here really does mean the cell was blank, not markup drift.)
-		if snap.Change == nil && snap.PctChange == nil {
+		// Blank edge change cell = explicit closed-session state; a
+		// direction-only cell ("down (%)") is not. (The parser hard-errors
+		// on a non-blank cell it cannot match, so nil here really does mean
+		// the cell was blank, not markup drift.)
+		if snap.Change == nil && snap.PctChange == nil && !snap.ChangeMagnitudeMissing {
 			row.Change = nil
 			row.ChangePct = nil
 			row.Note = "closed-session"
@@ -305,10 +308,22 @@ func fetchQuote(cmd *cobra.Command, flags *rootFlags, c *client.Client, dbPath, 
 		}
 	}
 
+	enforceChangePair(row)
+
 	if !state.TradingDay && row.Note == "" {
 		row.Note = "closed-session"
 	}
 	return row, nil
+}
+
+// enforceChangePair keeps the change/change_pct pair consistent: a numeric
+// change_pct is never served beside a null change, so a consumer can tell
+// "unchanged" (both present) from "unknown" (both null) without inspecting
+// the source field (issue #52).
+func enforceChangePair(row *quoteRow) {
+	if row.Change == nil {
+		row.ChangePct = nil
+	}
 }
 
 // parseEdgeAsOfDate extracts the calendar date from a stockData.do "As of"

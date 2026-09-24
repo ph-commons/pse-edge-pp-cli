@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/spf13/cobra"
 	"github.com/ph-commons/pse-edge-pp-cli/internal/store"
+	"github.com/spf13/cobra"
 )
 
 // TestNovelBreadthHelpWires smoke-tests that the breadth command
@@ -44,6 +44,23 @@ func TestBreadthAdvDecRatio(t *testing.T) {
 	}
 	if r := breadthAdvDecRatio(120, 0); r != nil {
 		t.Fatalf("breadthAdvDecRatio(120, 0) = %v, want nil (declines=0)", *r)
+	}
+}
+
+// TestBreadthWindowNote pins the empty-window explanation: an empty window
+// points at unsynced sessions rather than silently reading as "no breadth",
+// while a populated window keeps the close-only exclusion notice.
+func TestBreadthWindowNote(t *testing.T) {
+	empty := breadthWindowNote(nil, "2026-09-01", "2026-09-30")
+	if !strings.Contains(empty, "no breadth-bearing PSEI sessions") {
+		t.Fatalf("empty note = %q, want the no-breadth-sessions explanation", empty)
+	}
+	if !strings.Contains(empty, "2026-09-01") || !strings.Contains(empty, "2026-09-30") {
+		t.Fatalf("empty note = %q, want the window bounds", empty)
+	}
+	populated := breadthWindowNote([]breadthRow{{Date: "2026-09-23"}}, "2026-09-01", "2026-09-30")
+	if !strings.Contains(populated, "excluded, not zero-filled") {
+		t.Fatalf("populated note = %q, want the close-only exclusion notice", populated)
 	}
 }
 

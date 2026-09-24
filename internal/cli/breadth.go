@@ -11,9 +11,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/ph-commons/pse-edge-pp-cli/internal/psecal"
 	"github.com/ph-commons/pse-edge-pp-cli/internal/store"
+	"github.com/spf13/cobra"
 )
 
 // breadthRow is one PSEI session with breadth integers present.
@@ -67,8 +67,8 @@ Reads PSEI rows from pse_index_snapshots that actually carry breadth
 integers (advances IS NOT NULL). The 2021-2025 embedded backfill series is
 close-only and carries no breadth, so those dates are excluded rather than
 zero-filled; breadth_coverage states the first/last/count of sessions that
-do have breadth locally. Breadth accumulates one session per post-close
-'sync market' run.`,
+do have breadth locally. Breadth accumulates one session per 'sync market'
+run that captures the last completed composite reading.`,
 		Example: `  pse-edge-pp-cli breadth --since 30d --json
   pse-edge-pp-cli breadth --since 12w --json`,
 		Annotations: map[string]string{"mcp:read-only": "true"},
@@ -133,7 +133,7 @@ do have breadth locally. Breadth accumulates one session per post-close
 				Rows:            rows,
 				Summary:         breadthSummarize(rows),
 				BreadthCoverage: coverage,
-				Note:            "rows without breadth integers (e.g. the 2021-2025 close-only backfill series) are excluded, not zero-filled; breadth_coverage lists the sessions that have breadth locally.",
+				Note:            breadthWindowNote(rows, from, asOf),
 				Source:          "local",
 				AsOf:            asOf,
 				Stale:           stale,
@@ -215,6 +215,18 @@ func breadthCoverageSpan(cmd *cobra.Command, db *store.Store) (*breadthCoverage,
 		return nil, nil
 	}
 	return &breadthCoverage{First: first.String, Last: last.String, Days: days}, nil
+}
+
+// breadthWindowNote explains an empty window: breadth is persisted by
+// 'sync market' when it captures a completed composite session, so recent
+// sessions may simply not be synced yet. A non-empty window keeps the
+// exclusion notice for close-only rows.
+func breadthWindowNote(rows []breadthRow, from, asOf string) string {
+	const exclusion = "rows without breadth integers (e.g. the 2021-2025 close-only backfill series) are excluded, not zero-filled; breadth_coverage lists the sessions that have breadth locally."
+	if len(rows) == 0 {
+		return fmt.Sprintf("no breadth-bearing PSEI sessions in the requested window [%s, %s]; breadth is persisted by 'sync market' once the composite page reports a completed session, so recent sessions may not be synced yet. %s", from, asOf, exclusion)
+	}
+	return exclusion
 }
 
 // breadthAdvDecRatio is advances/declines; nil when declines is 0.

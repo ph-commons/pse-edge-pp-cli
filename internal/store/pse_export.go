@@ -49,19 +49,39 @@ func volumeStatus(volume *float64) string {
 
 // ExportIndexRow is one JSONL object for `export index` (pse-edge-export-index-v1).
 type ExportIndexRow struct {
-	Contract    string   `json:"contract"`
-	IndexCode   string   `json:"index_code"`
-	TradingDate string   `json:"trading_date"`
-	Value       float64  `json:"value"`
-	Change      *float64 `json:"change"`
-	PctChange   *float64 `json:"pct_change"`
-	Advances    *int     `json:"advances"`
-	Declines    *int     `json:"declines"`
-	Unchanged   *int     `json:"unchanged"`
-	TotalVolume *float64 `json:"total_volume"`
-	TotalValue  *float64 `json:"total_value"`
-	TotalTrades *int     `json:"total_trades"`
-	Source      string   `json:"source"`
+	Contract      string   `json:"contract"`
+	IndexCode     string   `json:"index_code"`
+	TradingDate   string   `json:"trading_date"`
+	Value         float64  `json:"value"`
+	Change        *float64 `json:"change"`
+	PctChange     *float64 `json:"pct_change"`
+	Advances      *int     `json:"advances"`
+	Declines      *int     `json:"declines"`
+	Unchanged     *int     `json:"unchanged"`
+	TotalVolume   *float64 `json:"total_volume"`
+	TotalValue    *float64 `json:"total_value"`
+	TotalTrades   *int     `json:"total_trades"`
+	Source        string   `json:"source"`
+	ChangeStatus  string   `json:"change_status"`
+	BreadthStatus string   `json:"breadth_status"`
+}
+
+// indexChangeStatus mirrors volumeStatus: nil change is unavailable, a
+// present value (including 0) is ok.
+func indexChangeStatus(change *float64) string {
+	if change == nil {
+		return "unavailable"
+	}
+	return "ok"
+}
+
+// indexBreadthStatus requires both advances and declines: a single-sided row
+// cannot support a breadth reading.
+func indexBreadthStatus(advances, declines *int) string {
+	if advances == nil || declines == nil {
+		return "unavailable"
+	}
+	return "ok"
 }
 
 // ExportCompanyRow is one JSONL object for `export companies-local`.
@@ -198,6 +218,8 @@ func (s *Store) StreamExportIndex(ctx context.Context, from, to string, codes []
 		r.TotalVolume = nullF64(tvol)
 		r.TotalValue = nullF64(tval)
 		r.TotalTrades = nullI(trades)
+		r.ChangeStatus = indexChangeStatus(r.Change)
+		r.BreadthStatus = indexBreadthStatus(r.Advances, r.Declines)
 		if err := emit(r); err != nil {
 			return n, err
 		}

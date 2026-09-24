@@ -20,12 +20,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/ph-commons/pse-edge-pp-cli/internal/client"
 	"github.com/ph-commons/pse-edge-pp-cli/internal/cliutil"
 	"github.com/ph-commons/pse-edge-pp-cli/internal/psecal"
 	"github.com/ph-commons/pse-edge-pp-cli/internal/pseedge"
 	"github.com/ph-commons/pse-edge-pp-cli/internal/store"
+	"github.com/spf13/cobra"
 )
 
 const (
@@ -90,9 +90,10 @@ frames.pse.com.ph (public endpoints, no auth):
 
   pse_companies        full paginated company directory (stops on first empty page)
   pse_index_snapshots  embedded daily PSEi series backfill (idempotent) plus the
-                       current composite reading — written ONLY when the session
-                       is post-close per the trading calendar, otherwise skipped
-                       with a note (EOD snapshots must be final data)
+                       current composite reading persisted for the last completed
+                       session the page itself reports (no clock-phase window),
+                       skipped only when the page reports an in-progress or
+                       unparseable session (EOD snapshots must be final data)
   pse_eod_prices       per-ticker daily bars from DisclosureCht.ax over --since
                        (rows are inherently final history); every row passes the
                        price-sanity gate before it can land
@@ -291,8 +292,10 @@ func syncMarketCompanies(ctx context.Context, c *client.Client, db *store.Store,
 
 // syncMarketIndex fetches compositeSector once, backfills the embedded
 // daily PSEi series (idempotent upsert), and writes the current composite
-// reading only when the session is post-close per psecal — provisional
-// intraday readings never land in the EOD snapshot table.
+// reading under the session date the page itself reports — but only when
+// that session is final (at or before the last completed trading day per
+// psecal). Provisional intraday readings never land in the EOD snapshot
+// table.
 func syncMarketIndex(ctx context.Context, c *client.Client, db *store.Store, flags *rootFlags, events io.Writer) (int, error) {
 	marketEvent(events, map[string]any{"event": "sync_start", "resource": "pse_index_snapshots"})
 	reqCtx, cancel := boundCtx(ctx, flags)
@@ -332,56 +335,84 @@ func syncMarketIndex(ctx context.Context, c *client.Client, db *store.Store, fla
 	marketEvent(events, map[string]any{"event": "backfill", "resource": "pse_index_snapshots", "index_code": "PSEI", "rows": len(backfill)})
 
 	// Current composite reading: only a completed session may be written,
-	// and only under the date the page itself reports. If the page's own
-	// trade date (Manila date part) does not equal the calendar's last
-	// completed session, writing it under state.LastCompleted would misdate
-	// the snapshot — skip with a warning instead.
+	// and only under the date the page itself reports. A page stamp at or
+	// before the calendar's last completed session is final and stored under
+	// its own date (a lagging page still stores its reported session); a
+	// later stamp is the in-progress session and is skipped with a warning
+	// rather than written as provisional. Every index reading must resolve to
+	// that same session, and the page's undated breadth summary is the same
+	// session's aggregate — it is attached to the PSEI row only when all
+	// indices agree on the session, so a mixed page is never misdated.
 	state := psecal.SessionState(time.Now())
-	if state.Phase == "post-close" {
-		tradingDate := state.LastCompleted
-		if pageDate, raw := compositeTradeDate(comp); pageDate != tradingDate {
-			marketEvent(events, map[string]any{
-				"event": "sync_warning", "resource": "pse_index_snapshots",
-				"reason":  "trade_date_mismatch",
-				"message": fmt.Sprintf("composite page trade date %q (raw %q) != last completed session %s; snapshot skipped rather than written under the wrong date", pageDate, raw, tradingDate),
-			})
-			return total, nil
-		}
-		rows := make([]store.PSEIndexSnapshotRow, 0, len(comp.Indices))
-		for _, idx := range comp.Indices {
-			change := idx.Change
-			pct := idx.PctChange
-			row := store.PSEIndexSnapshotRow{
-				IndexCode:   idx.Code,
-				TradingDate: tradingDate,
-				Value:       idx.Value,
-				Change:      &change,
-				PctChange:   &pct,
-				Source:      "edge",
-			}
-			if idx.Code == "PSEI" {
-				row.Advances = comp.Advances
-				row.Declines = comp.Declines
-				row.Unchanged = comp.Unchanged
-				row.TotalVolume = comp.TotalVolume
-				row.TotalValue = comp.TotalValue
-				row.TotalTrades = comp.TotalTrades
-			}
-			rows = append(rows, row)
-		}
-		if err := db.UpsertPSEIndexSnapshots(ctx, rows); err != nil {
-			return total, fmt.Errorf("composite snapshot: %w", err)
-		}
-		total += len(rows)
-		marketEvent(events, map[string]any{"event": "snapshot", "resource": "pse_index_snapshots", "trading_date": tradingDate, "indices": len(rows)})
-	} else {
+	pageDate, raw, final := compositeSnapshotDate(comp, state.LastCompleted)
+	if !final {
 		marketEvent(events, map[string]any{
 			"event": "sync_warning", "resource": "pse_index_snapshots",
-			"reason":  "session_not_post_close",
-			"message": fmt.Sprintf("session phase is %q; composite snapshot skipped — only final post-close data is written (series backfill still ran)", state.Phase),
+			"reason":  "composite_not_final",
+			"message": fmt.Sprintf("composite page trade date %q (raw %q) is not a completed session (last completed %s); snapshot skipped rather than written as provisional", pageDate, raw, state.LastCompleted),
+		})
+		return total, nil
+	}
+	if bad := compositeIndexMismatch(comp, pageDate); bad != "" {
+		marketEvent(events, map[string]any{
+			"event": "sync_warning", "resource": "pse_index_snapshots",
+			"reason":  "composite_inconsistent",
+			"message": fmt.Sprintf("composite page index %s does not share session %s; snapshot skipped rather than misdated", bad, pageDate),
+		})
+		return total, nil
+	}
+	if pageDate < state.LastCompleted {
+		// A completed-but-lagging page means this run did not capture the
+		// newest completed session; surface it so a stale sync is not
+		// mistaken for a clean one (issue #53).
+		marketEvent(events, map[string]any{
+			"event": "sync_warning", "resource": "pse_index_snapshots",
+			"reason":  "composite_lagging",
+			"message": fmt.Sprintf("composite page trade date %s is older than the last completed session %s; storing the reported session under its own date", pageDate, state.LastCompleted),
 		})
 	}
+	rows := make([]store.PSEIndexSnapshotRow, 0, len(comp.Indices))
+	for _, idx := range comp.Indices {
+		change := idx.Change
+		pct := idx.PctChange
+		row := store.PSEIndexSnapshotRow{
+			IndexCode:   idx.Code,
+			TradingDate: pageDate,
+			Value:       idx.Value,
+			Change:      &change,
+			PctChange:   &pct,
+			Source:      "edge",
+		}
+		if idx.Code == "PSEI" {
+			row.Advances = comp.Advances
+			row.Declines = comp.Declines
+			row.Unchanged = comp.Unchanged
+			row.TotalVolume = comp.TotalVolume
+			row.TotalValue = comp.TotalValue
+			row.TotalTrades = comp.TotalTrades
+		}
+		rows = append(rows, row)
+	}
+	if err := db.UpsertPSEIndexSnapshots(ctx, rows); err != nil {
+		return total, fmt.Errorf("composite snapshot: %w", err)
+	}
+	total += len(rows)
+	marketEvent(events, map[string]any{"event": "snapshot", "resource": "pse_index_snapshots", "trading_date": pageDate, "indices": len(rows)})
 	return total, nil
+}
+
+// compositeSnapshotDate returns the session date the composite page's own
+// PSEI trade stamp describes, and whether that session is final. The page
+// stamp is the finality signal: a date at or before the last completed
+// trading day is a completed session and may be stored; a later date is the
+// in-progress session and must not. Returns the Manila date, the raw stamp,
+// and ok.
+func compositeSnapshotDate(comp *pseedge.Composite, lastCompleted string) (string, string, bool) {
+	date, raw := compositeTradeDate(comp)
+	if date == "" || date > lastCompleted {
+		return date, raw, false
+	}
+	return date, raw, true
 }
 
 // compositeTradeDate extracts the composite page's own trade date (Manila
@@ -393,18 +424,41 @@ func compositeTradeDate(comp *pseedge.Composite) (string, string) {
 			continue
 		}
 		raw := strings.TrimSpace(idx.TradeDate)
-		if t, err := time.Parse(time.RFC3339, raw); err == nil {
-			return t.In(psecal.Manila()).Format("2006-01-02"), raw
-		}
-		// Offset-less renders: the stamp is already Manila wall time.
-		if len(raw) >= 10 {
-			if _, err := time.Parse("2006-01-02", raw[:10]); err == nil {
-				return raw[:10], raw
-			}
-		}
-		return "", raw
+		return manilaTradeDate(raw), raw
 	}
 	return "", ""
+}
+
+// manilaTradeDate resolves a page trade stamp to its Manila calendar date.
+// ISO-8601 stamps carry an offset; an offset-less stamp is already Manila
+// wall time. Unparseable or missing stamps return "".
+func manilaTradeDate(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if t, err := time.Parse(time.RFC3339, raw); err == nil {
+		return t.In(psecal.Manila()).Format("2006-01-02")
+	}
+	if len(raw) >= 10 {
+		if _, err := time.Parse("2006-01-02", raw[:10]); err == nil {
+			return raw[:10]
+		}
+	}
+	return ""
+}
+
+// compositeIndexMismatch reports the first index whose own trade stamp does
+// not resolve to sessionDate, so a page carrying readings for different
+// sessions (or an undated reading) is never stored under one date. Returns
+// "" when every index shares sessionDate.
+func compositeIndexMismatch(comp *pseedge.Composite, sessionDate string) string {
+	for _, idx := range comp.Indices {
+		if manilaTradeDate(idx.TradeDate) != sessionDate {
+			return fmt.Sprintf("%s stamp %q", idx.Code, strings.TrimSpace(idx.TradeDate))
+		}
+	}
+	return ""
 }
 
 // syncMarketEOD fetches DisclosureCht.ax history per symbol, validates

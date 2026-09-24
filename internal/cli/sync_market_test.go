@@ -3,6 +3,7 @@
 package cli
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/ph-commons/pse-edge-pp-cli/internal/pseedge"
@@ -68,5 +69,44 @@ func TestCompositeSnapshotDate(t *testing.T) {
 				t.Fatalf("compositeSnapshotDate = (%q, %v), want (%q, %v)", date, ok, tc.wantDate, tc.wantFinal)
 			}
 		})
+	}
+}
+
+// TestCompositeIndexMismatch pins the mixed-session guard: a composite page
+// whose index readings carry different trade dates (or a missing stamp) must
+// not be stored under one session date. The helper returns the first
+// offending "CODE stamp", or "" when every index shares sessionDate.
+func TestCompositeIndexMismatch(t *testing.T) {
+	page := func(dates map[string]string) *pseedge.Composite {
+		out := &pseedge.Composite{}
+		for _, code := range []string{"PSEI", "FIN", "IND"} {
+			if d, ok := dates[code]; ok {
+				out.Indices = append(out.Indices, pseedge.Index{Code: code, TradeDate: d})
+			}
+		}
+		return out
+	}
+
+	if got := compositeIndexMismatch(page(map[string]string{
+		"PSEI": "2026-01-02T15:12:00+08:00",
+		"FIN":  "2026-01-02T15:12:00.005+08:00",
+		"IND":  "2026-01-02T15:12:00.007+08:00",
+	}), "2026-01-02"); got != "" {
+		t.Fatalf("consistent page mismatch = %q, want empty", got)
+	}
+
+	if got := compositeIndexMismatch(page(map[string]string{
+		"PSEI": "2026-01-02T15:12:00+08:00",
+		"FIN":  "2026-09-24T14:25:00+08:00",
+		"IND":  "2026-01-02T15:12:00+08:00",
+	}), "2026-01-02"); !strings.Contains(got, "FIN") {
+		t.Fatalf("mixed-session mismatch = %q, want it to name FIN", got)
+	}
+
+	if got := compositeIndexMismatch(page(map[string]string{
+		"PSEI": "2026-01-02T15:12:00+08:00",
+		"FIN":  "",
+	}), "2026-01-02"); !strings.Contains(got, "FIN") {
+		t.Fatalf("missing-stamp mismatch = %q, want it to name FIN", got)
 	}
 }

@@ -339,7 +339,10 @@ func syncMarketIndex(ctx context.Context, c *client.Client, db *store.Store, fla
 	// before the calendar's last completed session is final and stored under
 	// its own date (a lagging page still stores its reported session); a
 	// later stamp is the in-progress session and is skipped with a warning
-	// rather than written as provisional.
+	// rather than written as provisional. Every index reading must resolve to
+	// that same session, and the page's undated breadth summary is the same
+	// session's aggregate — it is attached to the PSEI row only when all
+	// indices agree on the session, so a mixed page is never misdated.
 	state := psecal.SessionState(time.Now())
 	pageDate, raw, final := compositeSnapshotDate(comp, state.LastCompleted)
 	if !final {
@@ -347,6 +350,14 @@ func syncMarketIndex(ctx context.Context, c *client.Client, db *store.Store, fla
 			"event": "sync_warning", "resource": "pse_index_snapshots",
 			"reason":  "composite_not_final",
 			"message": fmt.Sprintf("composite page trade date %q (raw %q) is not a completed session (last completed %s); snapshot skipped rather than written as provisional", pageDate, raw, state.LastCompleted),
+		})
+		return total, nil
+	}
+	if bad := compositeIndexMismatch(comp, pageDate); bad != "" {
+		marketEvent(events, map[string]any{
+			"event": "sync_warning", "resource": "pse_index_snapshots",
+			"reason":  "composite_inconsistent",
+			"message": fmt.Sprintf("composite page index %s does not share session %s; snapshot skipped rather than misdated", bad, pageDate),
 		})
 		return total, nil
 	}
@@ -413,18 +424,41 @@ func compositeTradeDate(comp *pseedge.Composite) (string, string) {
 			continue
 		}
 		raw := strings.TrimSpace(idx.TradeDate)
-		if t, err := time.Parse(time.RFC3339, raw); err == nil {
-			return t.In(psecal.Manila()).Format("2006-01-02"), raw
-		}
-		// Offset-less renders: the stamp is already Manila wall time.
-		if len(raw) >= 10 {
-			if _, err := time.Parse("2006-01-02", raw[:10]); err == nil {
-				return raw[:10], raw
-			}
-		}
-		return "", raw
+		return manilaTradeDate(raw), raw
 	}
 	return "", ""
+}
+
+// manilaTradeDate resolves a page trade stamp to its Manila calendar date.
+// ISO-8601 stamps carry an offset; an offset-less stamp is already Manila
+// wall time. Unparseable or missing stamps return "".
+func manilaTradeDate(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if t, err := time.Parse(time.RFC3339, raw); err == nil {
+		return t.In(psecal.Manila()).Format("2006-01-02")
+	}
+	if len(raw) >= 10 {
+		if _, err := time.Parse("2006-01-02", raw[:10]); err == nil {
+			return raw[:10]
+		}
+	}
+	return ""
+}
+
+// compositeIndexMismatch reports the first index whose own trade stamp does
+// not resolve to sessionDate, so a page carrying readings for different
+// sessions (or an undated reading) is never stored under one date. Returns
+// "" when every index shares sessionDate.
+func compositeIndexMismatch(comp *pseedge.Composite, sessionDate string) string {
+	for _, idx := range comp.Indices {
+		if manilaTradeDate(idx.TradeDate) != sessionDate {
+			return fmt.Sprintf("%s stamp %q", idx.Code, strings.TrimSpace(idx.TradeDate))
+		}
+	}
+	return ""
 }
 
 // syncMarketEOD fetches DisclosureCht.ax history per symbol, validates

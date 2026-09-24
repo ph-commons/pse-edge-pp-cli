@@ -67,6 +67,7 @@ Live `export companies` remains the **network** directory scrape (generated path
 - Export and `history` surface `"volume": null` when unknown — do not impute zeros.
 - Every EOD and `history` row includes `volume_status`: `ok` when `volume` is non-null (including `0`), `unavailable` when `volume` is null. Index history has no share volume, so status is always `unavailable`. Contract id stays `pse-edge-export-eod-v1` (additive field).
 - `export index` rows carry `change_status` and `breadth_status` (`ok` or `unavailable`). A `(index_code, trading_date)` with **no row** means that stream was not synced for that date; a present row with `unavailable` means the field is not part of that row (PSEI dates inside the embedded series range are close-only until the composite for that session is captured). Contract id stays `pse-edge-export-index-v1` (additive field).
+- The composite snapshot (and the PSEI breadth summary) is stored only when the page reports a **completed** session and every index reading shares that session date; a page carrying mixed-session or in-progress readings is skipped rather than misdated.
 
 ## 5. Sector / subsector on registry
 

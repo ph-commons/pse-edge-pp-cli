@@ -13,6 +13,8 @@ automation for this independent repo (that rule applies only when publishing
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-09-24
+
 ### Fixed
 
 - Installer no longer writes a self-referential `pp-pse-edge` link when the skills dir already exposes that skill (the fleet layout symlinks `~/.claude/skills` at the canonical skills tree). The duplicate link left git-tracked churn on every machine that syncs that tree. Real per-skill farms and any other layout still get wired.
@@ -107,7 +109,8 @@ automation for this independent repo (that rule applies only when publishing
 - Initial public release: agent-native PSE Edge CLI (quotes, filings, local
   history, MCP).
 
-[Unreleased]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.3...v0.1.4

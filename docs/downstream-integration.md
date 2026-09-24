@@ -52,6 +52,18 @@ Every local export row includes `"contract": "<id>"`:
 
 Live `export companies` remains the **network** directory scrape (generated path), not the local registry.
 
+## Disclosure day bundle (supported)
+
+```bash
+pse-edge-pp-cli filings day --date 20260924 --out ./disclosures-20260924 --json
+```
+
+Contract id: `pse-edge-disclosure-day-v1`, written to `--out/manifest.json`.
+
+This is disclosure evidence, not a price export. Read the manifest and the relative files it names. Do not open `data.db` for these bytes. `corpus_complete` is always false because discovery uses `announcements/search.ax`. `same_day_partial` means the acquisition cutoff is still on the target Manila date. Exit 6 means the written bundle is partial.
+
+Price exports stay on `export eod` / `export index`. Do not merge the two contracts.
+
 ## 3. Strict mode for `sync market`
 
 **Today:** hard-fail on some aggregate failures; per-symbol problems emit `sync_warning` events and continue.

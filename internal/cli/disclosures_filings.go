@@ -290,6 +290,7 @@ offline joins (the 'deadlines' command reads it).`,
 
 	cmd.AddCommand(newFilingsGetCmd(flags))
 	cmd.AddCommand(newFilingsLatestBodyCmd(flags))
+	cmd.AddCommand(newFilingsDayCmd(flags))
 	return cmd
 }
 

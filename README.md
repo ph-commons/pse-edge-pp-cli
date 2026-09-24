@@ -227,7 +227,21 @@ Which commands carry `file_id` / `document_file_id`:
 | `filings SYMBOL` | no (index only) |
 | `filings get --edge-no` | yes |
 | `filings latest-body SYMBOL` | yes + body |
+| `filings day` | yes, retained on disk (body and every attachment) |
 | `disclosures document --file-id` | yes (input + body) |
+
+### One calendar day, with the files kept
+
+```bash
+pse-edge-pp-cli filings day --date 20260924 --out ./disclosures-20260924 --json
+pse-edge-pp-cli filings day --symbol AT --out ./disclosures-today --json
+```
+
+`--date` defaults to today in Asia/Manila (`YYYYMMDD` or `MM-DD-YYYY`). Rows are selected by disclosure publication date. The manifest records `acquisition_cutoff`. A run whose date is that same Manila day sets `same_day_partial`, so a midday snapshot is not full-day coverage.
+
+`corpus_complete` is always false. An empty search or a `--max-scan-pages` hit (default 40 pages, 50 rows each) is reported and is not proof that the official viewer has nothing else. Original bytes stay in `--out/files/`. Extracted text is a sidecar. Identical reruns do not duplicate a hash. Changed bytes are a new revision. Exit 0 means downloads and viewer lookups succeeded. Exit 6 means the bundle is partial. Exit 5 means discovery failed before any page was scanned. Text-extraction failures stay on exit 0 and increment `summary.text_failures`.
+
+The bundle is separate from `export eod`. Downstream readers use `manifest.json`, not `data.db`.
 
 ### Relative strength question
 

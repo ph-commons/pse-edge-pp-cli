@@ -71,6 +71,7 @@ MCP: `go install …/pse-edge-pp-mcp@latest` → `claude mcp add pse-edge-pp-mcp
 | Filings (search index) | `pse-edge-pp-cli filings AT --json` |
 | Filing by edge_no (viewer) | `pse-edge-pp-cli filings get --edge-no <hash> --json` |
 | Latest filing file_id + body | `pse-edge-pp-cli filings latest-body AT --json` |
+| One day's filings, bytes kept | `pse-edge-pp-cli filings day --date YYYYMMDD --out DIR --json` |
 | Export local EOD/index | `pse-edge-pp-cli export eod\|index --from YYYY-MM-DD --format jsonl` |
 | Official quotation report | `pse-edge-pp-cli quotation-report --date YYYYMMDD --json` |
 | 17-Q/17-A deadlines | `pse-edge-pp-cli deadlines AT --json` |
@@ -89,6 +90,7 @@ MCP: `go install …/pse-edge-pp-mcp@latest` → `claude mcp add pse-edge-pp-mcp
 - `quotation-report` is the official Daily Quotation Report for one session. It is not `history` and it does not change `pse-edge-export-eod-v1`. A dash is null (`reported_dash`), not a zero or a suspension. `acquired_at` is not a 16:30 publication claim. Parsing needs `pdftotext`.
 - Announcements search: server ignores free-text `keyword` — CLI filters titles client-side.
 - Filings search is **not** an authoritative complete corpus (`complete` is relative to `announcements/search.ax` only). Prefer `filings get --edge-no` when a viewer URL is known. Search rows have `edge_no`, not `file_id`; use `filings latest-body SYMBOL` for newest `file_id` + body.
+- `filings day` retains original disclosure bytes and a `pse-edge-disclosure-day-v1` manifest. `corpus_complete` is always false. Exit 6 is a partial bundle. Do not read those files from `data.db`.
 - Phisix official API gone 2023-12-04; api3 is convenience overlay, not first-party.
 
 ## Recipes
@@ -155,6 +157,7 @@ Disable: `--no-learn` or `PSE_EDGE_NO_LEARN=true`.
 | 2 | Usage |
 | 3 | Not found |
 | 5 | API error |
+| 6 | Partial batch (disclosure day bundle) |
 | 7 | Rate limited |
 | 10 | Config error |
 

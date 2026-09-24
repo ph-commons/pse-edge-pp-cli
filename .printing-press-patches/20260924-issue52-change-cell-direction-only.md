@@ -13,8 +13,10 @@ reading as a real "unchanged" result.
 
 ## Fix
 
-- `changeCellRE` accepts a direction-only alternative (`(up|down)\s*\(\s*%\s*\)`)
-  alongside the existing magnitude form.
+- A separate, anchored `directionOnlyChangeCellRE`
+  (`^\s*(up|down)\s*\(\s*%\s*\)\s*$`) accepts a whole-cell direction-only form.
+  The magnitude `changeCellRE` is unchanged, and a direction-only prefix with
+  trailing content still returns `*MarkupDriftError`.
 - `ParseStockData` sets `Snapshot.ChangeMagnitudeMissing` (not serialized) for
   a direction-only cell and leaves `Change`/`PctChange` nil.
 - `quote` no longer treats `ChangeMagnitudeMissing` as a closed session, and

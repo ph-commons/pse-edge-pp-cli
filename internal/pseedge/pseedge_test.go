@@ -238,6 +238,24 @@ sendData.security_id = "320";
 </tr>
 </table>`
 
+// stockDirectionOnlyTrailingPayloadFixture is malformed: the direction-only
+// form appears as a prefix with a numeric-looking suffix. An unanchored
+// direction-only match would accept the prefix and silently drop
+// "0.5 (1%)"; the whole-cell match must reject it as markup drift so the
+// non-blank unmatched-cell contract holds (issue #52 review).
+const stockDirectionOnlyTrailingPayloadFixture = `<script>
+sendData.cmpy_id = "34";
+sendData.security_id = "320";
+</script>
+<div class="compInfo"><p>Atlas Consolidated Mining and Development Corporation</p></div>
+<option value="320" selected>AT</option>
+<table class="view">
+<tr>
+  <th>Change(% Change)</th>
+  <td>down` + "\u00a0" + `(%) 0.5 (1%)</td>
+</tr>
+</table>`
+
 // stockClosedFixture has a blank change cell: explicit closed-session
 // state, change fields must stay nil (never zero).
 const stockClosedFixture = `<script>
@@ -575,6 +593,18 @@ func TestParseStockDataMalformedPercentIsStillDrift(t *testing.T) {
 	var driftErr *MarkupDriftError
 	if !errors.As(err, &driftErr) {
 		t.Fatalf("malformed percent change cell must be *MarkupDriftError, got %v", err)
+	}
+}
+
+// TestParseStockDataDirectionOnlyTrailingPayloadIsDrift pins the direction-only
+// form to the whole cell: a direction-only prefix with trailing content is
+// non-blank unmatched content, so it must stay a typed drift error rather than
+// being silently accepted with its suffix dropped.
+func TestParseStockDataDirectionOnlyTrailingPayloadIsDrift(t *testing.T) {
+	_, err := ParseStockData(stockDirectionOnlyTrailingPayloadFixture)
+	var driftErr *MarkupDriftError
+	if !errors.As(err, &driftErr) {
+		t.Fatalf("direction-only prefix with trailing payload must be *MarkupDriftError, got %v", err)
 	}
 }
 

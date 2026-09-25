@@ -4,6 +4,7 @@ package quotationreport
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -141,6 +142,76 @@ func TestAdmitPersistErrorLeavesIndex(t *testing.T) {
 	}
 	if idx.CurrentSHA != "aaa" || len(idx.Revisions) != 1 {
 		t.Fatalf("index=%+v", idx)
+	}
+}
+
+func TestAdmitIndexWriteFailureKeepsPreviousCurrent(t *testing.T) {
+	root := t.TempDir()
+	session := "2026-09-24"
+	when := time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
+	disc := Discovery{PDFURL: "https://documents.pse.com.ph/a.pdf"}
+	first := &Parsed{SessionDate: session, Rows: []Row{{Symbol: "AT", RowLocator: "r1", Close: floatPtr(1)}}}
+	pdf := PDF{URL: disc.PDFURL, Body: []byte("%PDF-1\n"), SHA: "aaa"}
+	if _, _, _, err := Admit(root, session, pdf, disc, first, when); err != nil {
+		t.Fatal(err)
+	}
+	prev := writeAdmittedIndex
+	writeAdmittedIndex = func(string, any) error { return errors.New("index write failed") }
+	t.Cleanup(func() { writeAdmittedIndex = prev })
+	next := PDF{URL: "https://documents.pse.com.ph/b.pdf", Body: []byte("%PDF-2\n"), SHA: "bbb"}
+	second := &Parsed{SessionDate: session, Rows: []Row{{Symbol: "AT", RowLocator: "r1", Close: floatPtr(2)}}}
+	if _, _, _, err := Admit(root, session, next, disc, second, when.Add(time.Hour)); err == nil {
+		t.Fatal("expected index error")
+	}
+	idx, err := loadIndex(sessionDir(root, session))
+	if err != nil || idx.CurrentSHA != "aaa" {
+		t.Fatalf("index=%+v err=%v", idx, err)
+	}
+	db, err := store.Open(filepath.Join(root, "data.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	cur, err := db.QueryQuotationRevisions(context.Background(), store.QuotationQuery{From: session, To: session})
+	if err != nil || len(cur) != 1 || cur[0].SourceSHA256 != "aaa" {
+		t.Fatalf("sqlite current=%+v err=%v", cur, err)
+	}
+	doc, ok, err := ReadCurrent(root, session)
+	if err != nil || !ok || doc.Source.SHA256 != "aaa" {
+		t.Fatalf("read=%s ok=%v err=%v", doc.Source.SHA256, ok, err)
+	}
+}
+
+func TestAdmitPromoteFailureRestoresIndex(t *testing.T) {
+	root := t.TempDir()
+	session := "2026-09-24"
+	when := time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
+	disc := Discovery{PDFURL: "https://documents.pse.com.ph/a.pdf"}
+	first := &Parsed{SessionDate: session, Rows: []Row{{Symbol: "AT", RowLocator: "r1", Close: floatPtr(1)}}}
+	pdf := PDF{URL: disc.PDFURL, Body: []byte("%PDF-1\n"), SHA: "aaa"}
+	if _, _, _, err := Admit(root, session, pdf, disc, first, when); err != nil {
+		t.Fatal(err)
+	}
+	prev := promoteAdmitted
+	promoteAdmitted = func(string, string, string) error { return errors.New("promote failed") }
+	t.Cleanup(func() { promoteAdmitted = prev })
+	next := PDF{URL: "https://documents.pse.com.ph/b.pdf", Body: []byte("%PDF-2\n"), SHA: "bbb"}
+	second := &Parsed{SessionDate: session, Rows: []Row{{Symbol: "AT", RowLocator: "r1", Close: floatPtr(2)}}}
+	if _, _, _, err := Admit(root, session, next, disc, second, when.Add(time.Hour)); err == nil {
+		t.Fatal("expected promote error")
+	}
+	idx, err := loadIndex(sessionDir(root, session))
+	if err != nil || idx.CurrentSHA != "aaa" || len(idx.Revisions) != 1 {
+		t.Fatalf("index=%+v err=%v", idx, err)
+	}
+	db, err := store.Open(filepath.Join(root, "data.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	cur, err := db.QueryQuotationRevisions(context.Background(), store.QuotationQuery{From: session, To: session})
+	if err != nil || len(cur) != 1 || cur[0].SourceSHA256 != "aaa" {
+		t.Fatalf("sqlite current=%+v err=%v", cur, err)
 	}
 }
 

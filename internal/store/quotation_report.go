@@ -142,12 +142,69 @@ func (s *Store) createQuotationReportTables(ctx context.Context) error {
 
 // PersistQuotationRevision replaces one SHA and marks it current, in one transaction.
 func (s *Store) PersistQuotationRevision(ctx context.Context, in QuotationRevisionInput) error {
-	return s.persistQuotationRevision(ctx, in, nil)
+	return s.persistQuotationRevision(ctx, in, true, nil)
 }
 
-// persistQuotationRevision writes the revision. beforeCommit runs before commit.
-// A non-nil error from beforeCommit rolls the transaction back.
-func (s *Store) persistQuotationRevision(ctx context.Context, in QuotationRevisionInput, beforeCommit func() error) error {
+// StoreQuotationRevision replaces one SHA and leaves the current pointer unchanged.
+func (s *Store) StoreQuotationRevision(ctx context.Context, in QuotationRevisionInput) error {
+	return s.persistQuotationRevision(ctx, in, false, nil)
+}
+
+// PromoteQuotationRevision marks one complete SHA current and clears the others for that session.
+func (s *Store) PromoteQuotationRevision(ctx context.Context, session, sha string) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	if err := s.createQuotationReportTables(ctx); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var complete int
+	err = tx.QueryRowContext(ctx,
+		`SELECT complete FROM pse_quotation_revisions WHERE session_date = ? AND source_sha256 = ?`,
+		session, sha,
+	).Scan(&complete)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: %s", ErrQuotationRevisionNotFound, sha)
+		}
+		return err
+	}
+	if complete != 1 {
+		return fmt.Errorf("%w: %s", ErrQuotationRevisionNotFound, sha)
+	}
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE pse_quotation_revisions SET is_current = 0 WHERE session_date = ?`, session,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE pse_quotation_revisions SET is_current = 1 WHERE session_date = ? AND source_sha256 = ?`,
+		session, sha,
+	); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// ClearQuotationCurrent clears is_current for one session. Rows stay complete.
+func (s *Store) ClearQuotationCurrent(ctx context.Context, session string) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	if err := s.createQuotationReportTables(ctx); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE pse_quotation_revisions SET is_current = 0 WHERE session_date = ?`, session)
+	return err
+}
+
+// persistQuotationRevision writes the revision. makeCurrent also demotes the other SHAs.
+// beforeCommit runs before commit. A non-nil error from beforeCommit rolls the transaction back.
+func (s *Store) persistQuotationRevision(ctx context.Context, in QuotationRevisionInput, makeCurrent bool, beforeCommit func() error) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	if err := s.createQuotationReportTables(ctx); err != nil {
@@ -208,7 +265,7 @@ func (s *Store) persistQuotationRevision(ctx context.Context, in QuotationRevisi
 			session_date, source_sha256, source_url, byte_length, acquired_at, pdf_path,
 			listing_url, ajax_url, matched_title, matched_category, upload_date, document_session_date,
 			is_current, complete
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
 		ON CONFLICT(session_date, source_sha256) DO UPDATE SET
 			source_url = excluded.source_url,
 			byte_length = excluded.byte_length,
@@ -220,17 +277,20 @@ func (s *Store) persistQuotationRevision(ctx context.Context, in QuotationRevisi
 			matched_category = excluded.matched_category,
 			upload_date = excluded.upload_date,
 			document_session_date = excluded.document_session_date,
-			is_current = 1,
-			complete = 1`,
+			complete = 1,
+			is_current = CASE WHEN excluded.is_current = 1 THEN 1 ELSE pse_quotation_revisions.is_current END`,
 		in.SessionDate, in.SourceSHA256, in.SourceURL, in.ByteLength, in.AcquiredAt, in.PDFPath,
 		in.ListingURL, in.AjaxURL, in.MatchedTitle, in.MatchedCategory, in.UploadDate, in.DocumentSessionDate,
+		currentBit(makeCurrent),
 	); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE pse_quotation_revisions SET is_current = 0 WHERE session_date = ? AND source_sha256 <> ?`,
-		in.SessionDate, in.SourceSHA256); err != nil {
-		return err
+	if makeCurrent {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE pse_quotation_revisions SET is_current = 0 WHERE session_date = ? AND source_sha256 <> ?`,
+			in.SessionDate, in.SourceSHA256); err != nil {
+			return err
+		}
 	}
 	if beforeCommit != nil {
 		if err := beforeCommit(); err != nil {
@@ -238,6 +298,13 @@ func (s *Store) persistQuotationRevision(ctx context.Context, in QuotationRevisi
 		}
 	}
 	return tx.Commit()
+}
+
+func currentBit(makeCurrent bool) int {
+	if makeCurrent {
+		return 1
+	}
+	return 0
 }
 
 // QueryQuotationRevisions returns complete revisions. SHA empty means is_current = 1.

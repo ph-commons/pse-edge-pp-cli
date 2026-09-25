@@ -162,7 +162,7 @@ func TestPersistQuotationRevisionRollsBack(t *testing.T) {
 		AcquiredAt: "2026-09-24T12:00:00Z", PDFPath: "a.pdf",
 		Rows: []QuotationStoredRow{{Symbol: "AT", RowLocator: "r1", Page: 1, FieldStatus: map[string]string{"close": "reported_dash"}}},
 	}
-	err := s.persistQuotationRevision(ctx, in, func() error { return errors.New("boom") })
+	err := s.persistQuotationRevision(ctx, in, true, func() error { return errors.New("boom") })
 	if err == nil {
 		t.Fatal("expected rollback error")
 	}

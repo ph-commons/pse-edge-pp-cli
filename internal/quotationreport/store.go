@@ -115,9 +115,23 @@ func ReadCurrent(root, session string) (Document, bool, error) {
 	return doc, true, nil
 }
 
+// writeAdmittedIndex and promoteAdmitted are replaceable in tests so a failure
+// after the row insert can be forced without a second database.
+var writeAdmittedIndex = writeJSON
+
+var promoteAdmitted = func(root, session, sha string) error {
+	db, err := store.Open(filepath.Join(root, "data.db"))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	return db.PromoteQuotationRevision(context.Background(), session, sha)
+}
+
 // Admit stores PDF bytes and, when parsed is non-nil, makes that hash current.
 // The same hash does not add another revision. A new hash keeps the previous PDF.
-// Rows are written to data.db before index.json advances.
+// Rows are stored before index.json advances. The SQLite current flag moves
+// only after that index write succeeds. A failed promote restores the previous index.
 func Admit(root, session string, pdf PDF, discovery Discovery, parsed *Parsed, now time.Time) (Document, bool, string, error) {
 	dir := sessionDir(root, session)
 	path, err := retainPDF(dir, pdf)
@@ -157,7 +171,7 @@ func Admit(root, session string, pdf PDF, discovery Discovery, parsed *Parsed, n
 	if err := writeJSON(filepath.Join(dir, pdf.SHA+".json"), doc); err != nil {
 		return Document{}, false, previous, err
 	}
-	if err := persistAdmitted(root, doc); err != nil {
+	if err := storeAdmitted(root, doc); err != nil {
 		return Document{}, false, previous, err
 	}
 	listed := false
@@ -176,12 +190,27 @@ func Admit(root, session string, pdf PDF, discovery Discovery, parsed *Parsed, n
 			SessionTitle: discovery.SessionTitle,
 		})
 	}
+	indexPath := filepath.Join(dir, "index.json")
+	prevIndex, prevReadErr := os.ReadFile(indexPath)
+	if prevReadErr != nil && !os.IsNotExist(prevReadErr) {
+		return Document{}, false, previous, prevReadErr
+	}
 	writeIndex := !listed || idx.CurrentSHA != pdf.SHA
 	idx.CurrentSHA = pdf.SHA
 	if writeIndex {
-		if err := writeJSON(filepath.Join(dir, "index.json"), idx); err != nil {
+		if err := writeAdmittedIndex(indexPath, idx); err != nil {
 			return Document{}, false, previous, err
 		}
+	}
+	if err := promoteAdmitted(root, session, pdf.SHA); err != nil {
+		if writeIndex {
+			if prevReadErr == nil {
+				_ = os.WriteFile(indexPath, prevIndex, 0o644)
+			} else {
+				_ = os.Remove(indexPath)
+			}
+		}
+		return Document{}, false, previous, err
 	}
 	if previous != "" && previous != pdf.SHA {
 		return doc, true, previous, nil
@@ -189,13 +218,13 @@ func Admit(root, session string, pdf PDF, discovery Discovery, parsed *Parsed, n
 	return doc, false, "", nil
 }
 
-func persistAdmitted(root string, doc Document) error {
+func storeAdmitted(root string, doc Document) error {
 	db, err := store.Open(filepath.Join(root, "data.db"))
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	return db.PersistQuotationRevision(context.Background(), quotationInput(doc))
+	return db.StoreQuotationRevision(context.Background(), quotationInput(doc))
 }
 
 func quotationInput(doc Document) store.QuotationRevisionInput {

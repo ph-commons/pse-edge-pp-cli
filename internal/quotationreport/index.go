@@ -177,12 +177,40 @@ func indexSession(ctx context.Context, root, day string, result *IndexResult, op
 		if err != nil {
 			return err
 		}
-		if err := db.PersistQuotationRevision(ctx, quotationInput(doc)); err != nil {
+		if err := db.StoreQuotationRevision(ctx, quotationInput(doc)); err != nil {
 			return err
 		}
 		result.Indexed = append(result.Indexed, IndexHit{SessionDate: day, SHA256: rev.SHA, Rows: len(doc.Rows)})
 	}
-	return nil
+	return finishSessionCurrent(ctx, day, idx.CurrentSHA, result, open)
+}
+
+// finishSessionCurrent promotes the index.json current SHA only when that file
+// was admitted. A skipped current file clears is_current so an older revision
+// is not labeled current.
+func finishSessionCurrent(ctx context.Context, day, currentSHA string, result *IndexResult, open func() (*store.Store, error)) error {
+	saw := false
+	currentOK := false
+	for _, hit := range result.Indexed {
+		if hit.SessionDate != day {
+			continue
+		}
+		saw = true
+		if currentSHA != "" && hit.SHA256 == currentSHA {
+			currentOK = true
+		}
+	}
+	if !saw {
+		return nil
+	}
+	db, err := open()
+	if err != nil {
+		return err
+	}
+	if currentSHA != "" && currentOK {
+		return db.PromoteQuotationRevision(ctx, day, currentSHA)
+	}
+	return db.ClearQuotationCurrent(ctx, day)
 }
 
 func rejectDocument(doc Document, day, sha string) string {

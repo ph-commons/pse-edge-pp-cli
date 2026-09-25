@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ph-commons/pse-edge-pp-cli/internal/store"
@@ -124,6 +125,65 @@ func TestIndexRetainedSkipsAndKeepsCount(t *testing.T) {
 		t.Fatalf("third=%+v", third.Indexed)
 	}
 	assertCount(`SELECT COUNT(*) FROM pse_quotation_rows WHERE source_sha256='abc'`, 1)
+}
+
+func TestIndexRetainedSkippedCurrentIsNotCurrent(t *testing.T) {
+	root := t.TempDir()
+	dbPath := filepath.Join(root, "data.db")
+	day := "2026-09-24"
+	dir := sessionDir(root, day)
+	closeV := 1.0
+	older := sampleDoc(day, "aaa", Row{Symbol: "AT", RowLocator: "r1", Page: 1, Close: &closeV})
+	if err := writeJSON(filepath.Join(dir, "aaa.json"), older); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeJSON(filepath.Join(dir, "index.json"), indexFile{
+		SessionDate: day,
+		CurrentSHA:  "aaa",
+		Revisions:   []revision{{SHA: "aaa"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, err := IndexRetained(ctx, root, dbPath, day); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeJSON(filepath.Join(dir, "index.json"), indexFile{
+		SessionDate: day,
+		CurrentSHA:  "bbb",
+		Revisions:   []revision{{SHA: "aaa"}, {SHA: "bbb"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := IndexRetained(ctx, root, dbPath, day)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Indexed) != 1 || res.Indexed[0].SHA256 != "aaa" {
+		t.Fatalf("indexed=%+v", res.Indexed)
+	}
+	missing := false
+	for _, skip := range res.Skipped {
+		if skip.Reason == "missing" && strings.HasSuffix(skip.Path, "bbb.json") {
+			missing = true
+		}
+	}
+	if !missing {
+		t.Fatalf("skipped=%+v", res.Skipped)
+	}
+	db, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	cur, err := db.QueryQuotationRevisions(ctx, store.QuotationQuery{From: day, To: day})
+	if err != nil || len(cur) != 0 {
+		t.Fatalf("current=%+v err=%v", cur, err)
+	}
+	old, err := db.QueryQuotationRevisions(ctx, store.QuotationQuery{From: day, To: day, SHA: "aaa"})
+	if err != nil || len(old) != 1 || old[0].Current {
+		t.Fatalf("old=%+v err=%v", old, err)
+	}
 }
 
 func sampleDoc(day, sha string, row Row) Document {

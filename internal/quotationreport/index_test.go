@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ph-commons/pse-edge-pp-cli/internal/store"
 )
@@ -178,6 +179,22 @@ func TestIndexRetainedClearsStaleCurrentWhenNothingIndexed(t *testing.T) {
 	cur, err := db.QueryQuotationRevisions(context.Background(), store.QuotationQuery{From: day, To: day})
 	if err != nil || len(cur) != 0 {
 		t.Fatalf("current=%+v err=%v", cur, err)
+	}
+	db.Close()
+	if err := AlignQuotationCurrent(root, dbPath, day); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := Open(root, time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC), nil); err == nil {
+		t.Fatal("open succeeded without the current JSON file")
+	}
+	db, err = store.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	cur, err = db.QueryQuotationRevisions(context.Background(), store.QuotationQuery{From: day, To: day})
+	if err != nil || len(cur) != 0 {
+		t.Fatalf("after align current=%+v err=%v", cur, err)
 	}
 }
 

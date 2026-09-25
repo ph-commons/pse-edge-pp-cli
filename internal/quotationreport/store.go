@@ -260,6 +260,10 @@ func AlignQuotationCurrent(root, dbPath, session string) error {
 	if idx.CurrentSHA == "" {
 		return db.ClearQuotationCurrent(ctx, session)
 	}
+	doc, loadErr := loadDocument(sessionDir(root, session), idx.CurrentSHA)
+	if loadErr != nil || doc.Contract != ContractID || doc.Source.SHA256 != idx.CurrentSHA {
+		return db.ClearQuotationCurrent(ctx, session)
+	}
 	views, err := db.QueryQuotationRevisions(ctx, store.QuotationQuery{From: session, To: session, SHA: idx.CurrentSHA})
 	if err != nil {
 		if errors.Is(err, store.ErrQuotationRevisionNotFound) {

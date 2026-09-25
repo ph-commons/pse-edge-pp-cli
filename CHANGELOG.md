@@ -13,13 +13,15 @@ automation for this independent repo (that rule applies only when publishing
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-09-26
+
 ### Added
 
 - `quotation-report query` reads admitted Daily Quotation Report rows across sessions on contract `pse-edge-quotation-rows-v1`. `quotation-report index` loads revisions already named by `index.json` and does not download PDFs. The `data.db` tables are internal. A dash stays null `reported_dash`, not zero. This does not change `history`, `export eod`, or `pse_eod_prices` ([#61](https://github.com/ph-commons/pse-edge-pp-cli/issues/61)).
 
 ### Fixed
 
-- `quotation-report` keeps the SQLite current SHA aligned with `index.json`. A failed index write or promote leaves the previous revision current in both, and a restore failure is returned. The next `quotation-report` open or `query` promotes a current file whose JSON and rows are both stored. A missing current file stays not current after index and after a later query ([#61](https://github.com/ph-commons/pse-edge-pp-cli/issues/61)).
+- `quotation-report` aligns the SQLite current SHA with `index.json` when admission succeeds. A failed index write does not promote the SQLite current SHA. If promotion fails, the CLI attempts to restore the prior index and reports any restoration failure. The next `quotation-report` open repairs a valid interrupted promotion; `query` reports a mismatch without writing to SQLite. A missing current file stays not current after index and after a later query ([#61](https://github.com/ph-commons/pse-edge-pp-cli/issues/61)).
 
 ## [0.1.8] - 2026-09-25
 
@@ -129,7 +131,9 @@ automation for this independent repo (that rule applies only when publishing
 - Initial public release: agent-native PSE Edge CLI (quotes, filings, local
   history, MCP).
 
-[Unreleased]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.7...HEAD
+[Unreleased]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.9...HEAD
+[0.1.9]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.8...v0.1.9
+[0.1.8]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.4...v0.1.5

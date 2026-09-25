@@ -13,6 +13,14 @@ automation for this independent repo (that rule applies only when publishing
 
 ## [Unreleased]
 
+### Added
+
+- `quotation-report query` reads admitted Daily Quotation Report rows across sessions on contract `pse-edge-quotation-rows-v1`. `quotation-report index` loads revisions already named by `index.json` and does not download PDFs. The `data.db` tables are internal. A dash stays null `reported_dash`, not zero. This does not change `history`, `export eod`, or `pse_eod_prices` ([#61](https://github.com/ph-commons/pse-edge-pp-cli/issues/61)).
+
+### Fixed
+
+- `quotation-report` keeps the SQLite current SHA aligned with `index.json`. A failed index write or promote leaves the previous revision current in both, and a restore failure is returned. The next `quotation-report` open or `query` promotes a current file whose JSON and rows are both stored. A missing current file stays not current after index and after a later query ([#61](https://github.com/ph-commons/pse-edge-pp-cli/issues/61)).
+
 ## [0.1.8] - 2026-09-25
 
 ### Added

@@ -124,6 +124,26 @@ pse-edge-pp-cli quotation-report --date 2026-09-24 --symbols AT,DHI --agent
 
 PDF text requires Poppler `pdftotext`. The listing's nonce and table id are read from the page on each fetch. They are not constants. A failed listing does not fall back to a guessed PDF URL or to yesterday's report.
 
+## 7b. Quotation rows across sessions
+
+```bash
+pse-edge-pp-cli quotation-report query --from 20260924 --to 20260925 --json
+pse-edge-pp-cli quotation-report query --date 20260924 --sha <hash> --json
+pse-edge-pp-cli quotation-report index --json
+```
+
+| | |
+|---|---|
+| Query contract | `pse-edge-quotation-rows-v1` |
+| Index contract | `pse-edge-quotation-index-v1` |
+| Store | `data.db` tables are internal. These contracts are the supported interface. |
+| Dash | null `reported_dash`. Not zero. |
+| Missing session | omitted. Not a zero close. |
+| Previous revision | `--sha` returns that complete hash with `revision.current` false. |
+| Index | reads retained JSON named by `index.json`. It does not download PDFs. |
+
+`pse_eod_prices` is still not the quotation series. `history` and `export eod` (`pse-edge-export-eod-v1`) are unchanged.
+
 ## 8. History depth
 
 - `sync market --since` defaults to **30d** (override freely, e.g. `90d`, `365d`, or longer).

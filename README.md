@@ -191,6 +191,13 @@ pse-edge-pp-cli quotation-report --date 20260924 --json
 
 Session prices from the PSE End of Day Quotes PDF (`pse-edge-quotation-report-v1`). This is not `history` and not `export eod`. A dash is a null, not a zero. The CLI keeps the PDF and its SHA-256. `acquired_at` does not mean the file was ready at 16:30. Parsing needs Poppler `pdftotext`.
 
+```bash
+pse-edge-pp-cli quotation-report query --from 20260924 --to 20260925 --json
+pse-edge-pp-cli quotation-report index --json
+```
+
+`query` returns `pse-edge-quotation-rows-v1` for admitted sessions. `index` rebuilds those rows from retained JSON only. It does not download PDFs. SQLite is internal. `history` and `export eod` are unchanged.
+
 ### Disclosure sweep with client-side keyword
 
 ```bash

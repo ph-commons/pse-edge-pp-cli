@@ -3,10 +3,15 @@
 package quotationreport
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/ph-commons/pse-edge-pp-cli/internal/store"
 )
 
 type indexFile struct {
@@ -112,8 +117,33 @@ func ReadCurrent(root, session string) (Document, bool, error) {
 	return doc, true, nil
 }
 
+// writeAdmittedIndex and promoteAdmitted are replaceable in tests so a failure
+// after the row insert can be forced without a second database.
+var writeAdmittedIndex = writeJSON
+
+var promoteAdmitted = func(root, session, sha string) error {
+	db, err := store.Open(filepath.Join(root, "data.db"))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	return db.PromoteQuotationRevision(context.Background(), session, sha)
+}
+
+var restoreAdmittedIndex = func(path string, prev []byte, missing bool) error {
+	if missing {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	return os.WriteFile(path, prev, 0o644)
+}
+
 // Admit stores PDF bytes and, when parsed is non-nil, makes that hash current.
 // The same hash does not add another revision. A new hash keeps the previous PDF.
+// Rows are stored before index.json advances. The SQLite current flag moves
+// only after that index write succeeds. A failed promote restores the previous index.
 func Admit(root, session string, pdf PDF, discovery Discovery, parsed *Parsed, now time.Time) (Document, bool, string, error) {
 	dir := sessionDir(root, session)
 	path, err := retainPDF(dir, pdf)
@@ -131,12 +161,9 @@ func Admit(root, session string, pdf PDF, discovery Discovery, parsed *Parsed, n
 	if parsed == nil {
 		return Document{}, false, previous, nil
 	}
-	if previous == pdf.SHA {
-		doc, err := loadDocument(dir, pdf.SHA)
-		if err == nil && doc.Contract == ContractID {
-			doc.Source.PDFPath = path
-			return doc, false, "", nil
-		}
+	acquired := now.UTC().Format(time.RFC3339)
+	if existing, err := loadDocument(dir, pdf.SHA); err == nil && existing.Contract == ContractID && existing.Source.AcquiredAt != "" {
+		acquired = existing.Source.AcquiredAt
 	}
 	doc := Document{
 		Contract:    ContractID,
@@ -146,7 +173,7 @@ func Admit(root, session string, pdf PDF, discovery Discovery, parsed *Parsed, n
 			URL:        pdf.URL,
 			SHA256:     pdf.SHA,
 			ByteLength: len(pdf.Body),
-			AcquiredAt: now.UTC().Format(time.RFC3339),
+			AcquiredAt: acquired,
 			Discovery:  discovery,
 			PDFPath:    path,
 		},
@@ -156,8 +183,17 @@ func Admit(root, session string, pdf PDF, discovery Discovery, parsed *Parsed, n
 	if err := writeJSON(filepath.Join(dir, pdf.SHA+".json"), doc); err != nil {
 		return Document{}, false, previous, err
 	}
-	replaced := previous != "" && previous != pdf.SHA
-	if previous != pdf.SHA {
+	if err := storeAdmitted(root, doc); err != nil {
+		return Document{}, false, previous, err
+	}
+	listed := false
+	for _, rev := range idx.Revisions {
+		if rev.SHA == pdf.SHA {
+			listed = true
+			break
+		}
+	}
+	if !listed {
 		idx.Revisions = append(idx.Revisions, revision{
 			SHA:          pdf.SHA,
 			URL:          pdf.URL,
@@ -165,13 +201,196 @@ func Admit(root, session string, pdf PDF, discovery Discovery, parsed *Parsed, n
 			UploadDate:   discovery.UploadDate,
 			SessionTitle: discovery.SessionTitle,
 		})
-		idx.CurrentSHA = pdf.SHA
-		if err := writeJSON(filepath.Join(dir, "index.json"), idx); err != nil {
+	}
+	indexPath := filepath.Join(dir, "index.json")
+	prevIndex, prevReadErr := os.ReadFile(indexPath)
+	if prevReadErr != nil && !os.IsNotExist(prevReadErr) {
+		return Document{}, false, previous, prevReadErr
+	}
+	writeIndex := !listed || idx.CurrentSHA != pdf.SHA
+	idx.CurrentSHA = pdf.SHA
+	if writeIndex {
+		if err := writeAdmittedIndex(indexPath, idx); err != nil {
 			return Document{}, false, previous, err
 		}
 	}
-	if replaced {
+	if err := promoteAdmitted(root, session, pdf.SHA); err != nil {
+		if writeIndex {
+			if restoreErr := restoreAdmittedIndex(indexPath, prevIndex, os.IsNotExist(prevReadErr)); restoreErr != nil {
+				return Document{}, false, previous, fmt.Errorf("promote: %w; restore index: %v", err, restoreErr)
+			}
+		}
+		return Document{}, false, previous, err
+	}
+	if previous != "" && previous != pdf.SHA {
 		return doc, true, previous, nil
 	}
 	return doc, false, "", nil
+}
+
+func storeAdmitted(root string, doc Document) error {
+	db, err := store.Open(filepath.Join(root, "data.db"))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	return db.StoreQuotationRevision(context.Background(), quotationInput(doc))
+}
+
+// AlignQuotationCurrent makes SQLite's current SHA match index.json.
+// A crash after the index write and before promote is repaired here.
+// A named current file with no stored rows clears is_current.
+func AlignQuotationCurrent(root, dbPath, session string) error {
+	if _, err := os.Stat(dbPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	idx, err := loadIndex(sessionDir(root, session))
+	if err != nil {
+		return err
+	}
+	db, err := store.Open(dbPath)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	ctx := context.Background()
+	if idx.CurrentSHA == "" {
+		return db.ClearQuotationCurrent(ctx, session)
+	}
+	if !listedRevision(idx, idx.CurrentSHA) {
+		return db.ClearQuotationCurrent(ctx, session)
+	}
+	doc, loadErr := loadDocument(sessionDir(root, session), idx.CurrentSHA)
+	if loadErr != nil || rejectDocument(doc, session, idx.CurrentSHA) != "" {
+		return db.ClearQuotationCurrent(ctx, session)
+	}
+	views, err := db.QueryQuotationRevisions(ctx, store.QuotationQuery{From: session, To: session, SHA: idx.CurrentSHA})
+	if err != nil {
+		if errors.Is(err, store.ErrQuotationRevisionNotFound) {
+			return db.ClearQuotationCurrent(ctx, session)
+		}
+		return err
+	}
+	if len(views) == 1 && views[0].Current {
+		return nil
+	}
+	return db.PromoteQuotationRevision(ctx, session, idx.CurrentSHA)
+}
+
+func listedRevision(idx indexFile, sha string) bool {
+	for _, rev := range idx.Revisions {
+		if rev.SHA == sha {
+			return true
+		}
+	}
+	return false
+}
+
+// CheckQuotationCurrentRange verifies retained and SQLite current pointers
+// without modifying either store. IndexRetained repairs a mismatch.
+func CheckQuotationCurrentRange(ctx context.Context, root, dbPath, from, to string) error {
+	days, err := SessionDirs(root, "")
+	if err != nil {
+		return err
+	}
+	expected := map[string]string{}
+	for _, day := range days {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if day < from || day > to {
+			continue
+		}
+		dir := sessionDir(root, day)
+		idx, err := loadIndex(dir)
+		if err != nil {
+			return err
+		}
+		if idx.CurrentSHA == "" || !listedRevision(idx, idx.CurrentSHA) {
+			continue
+		}
+		doc, err := loadDocument(dir, idx.CurrentSHA)
+		if err == nil && rejectDocument(doc, day, idx.CurrentSHA) == "" {
+			expected[day] = idx.CurrentSHA
+		} else if err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	actual := map[string]string{}
+	if _, err := os.Stat(dbPath); err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+	} else {
+		db, err := store.OpenReadOnlyContext(ctx, dbPath)
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+		views, err := db.QueryQuotationRevisions(ctx, store.QuotationQuery{From: from, To: to})
+		if err != nil {
+			return err
+		}
+		for _, view := range views {
+			actual[view.SessionDate] = view.SourceSHA256
+		}
+	}
+	for day, sha := range expected {
+		if actual[day] != sha {
+			return fmt.Errorf("quotation current mismatch for %s: run quotation-report index to reconcile retained data and SQLite", day)
+		}
+	}
+	for day, sha := range actual {
+		if expected[day] != sha {
+			return fmt.Errorf("quotation current mismatch for %s: run quotation-report index to reconcile retained data and SQLite", day)
+		}
+	}
+	return nil
+}
+
+func quotationInput(doc Document) store.QuotationRevisionInput {
+	in := store.QuotationRevisionInput{
+		SessionDate:         doc.SessionDate,
+		SourceSHA256:        doc.Source.SHA256,
+		SourceURL:           doc.Source.URL,
+		ByteLength:          doc.Source.ByteLength,
+		AcquiredAt:          doc.Source.AcquiredAt,
+		PDFPath:             doc.Source.PDFPath,
+		ListingURL:          doc.Source.Discovery.ListingURL,
+		AjaxURL:             doc.Source.Discovery.AjaxURL,
+		MatchedTitle:        doc.Source.Discovery.MatchedTitle,
+		MatchedCategory:     doc.Source.Discovery.MatchedSlug,
+		UploadDate:          doc.Source.Discovery.UploadDate,
+		DocumentSessionDate: doc.Source.Discovery.SessionTitle,
+		Rows:                []store.QuotationStoredRow{},
+		Ambiguous:           []store.QuotationAmbiguousRow{},
+	}
+	for _, row := range doc.Rows {
+		in.Rows = append(in.Rows, store.QuotationStoredRow{
+			Symbol:        row.Symbol,
+			IssueName:     row.IssueName,
+			Board:         row.Board,
+			SecurityClass: row.SecurityClass,
+			Currency:      row.Currency,
+			RowLocator:    row.RowLocator,
+			Page:          row.Page,
+			Bid:           row.Bid,
+			Ask:           row.Ask,
+			Open:          row.Open,
+			High:          row.High,
+			Low:           row.Low,
+			Close:         row.Close,
+			Volume:        row.Volume,
+			Value:         row.Value,
+			NetForeign:    row.NetForeign,
+			FieldStatus:   row.FieldStatus,
+		})
+	}
+	for _, item := range doc.Ambiguous {
+		in.Ambiguous = append(in.Ambiguous, store.QuotationAmbiguousRow{Symbol: item.Symbol, Locators: item.Locators})
+	}
+	return in
 }

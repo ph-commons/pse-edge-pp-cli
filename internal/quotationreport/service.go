@@ -4,6 +4,7 @@ package quotationreport
 
 import (
 	"context"
+	"path/filepath"
 	"time"
 )
 
@@ -11,6 +12,9 @@ import (
 // ok is false when nothing has been admitted.
 func Open(root string, session time.Time, symbols []string) (Report, bool, error) {
 	day := session.Format("2006-01-02")
+	if err := AlignQuotationCurrent(root, filepath.Join(root, "data.db"), day); err != nil {
+		return Report{}, false, err
+	}
 	doc, found, err := ReadCurrent(root, day)
 	if err != nil || !found {
 		return Report{}, false, err
@@ -50,6 +54,9 @@ func Fetch(ctx context.Context, root, listingURL string, session time.Time, symb
 	if doc, foundDoc, err := ReadCurrent(root, day); err != nil {
 		return failedReport(day, err), err
 	} else if foundDoc && doc.Source.SHA256 == pdf.SHA {
+		if err := AlignQuotationCurrent(root, filepath.Join(root, "data.db"), day); err != nil {
+			return failedReport(day, err), err
+		}
 		rep := reportFromDocument(doc, symbols, true, false, "")
 		return rep, statusOrNil(rep.Status, "")
 	}

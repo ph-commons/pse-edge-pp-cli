@@ -257,6 +257,43 @@ func TestIndexRetainedSkippedCurrentIsNotCurrent(t *testing.T) {
 	}
 }
 
+func TestAlignQuotationCurrentRejectsWrongSessionDocument(t *testing.T) {
+	root := t.TempDir()
+	day := "2026-09-24"
+	dbPath := filepath.Join(root, "data.db")
+	dir := sessionDir(root, day)
+	closeV := 1.0
+	doc := sampleDoc(day, "aaa", Row{Symbol: "AT", RowLocator: "r1", Page: 1, Close: &closeV})
+	if err := writeJSON(filepath.Join(dir, "aaa.json"), doc); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeJSON(filepath.Join(dir, "index.json"), indexFile{SessionDate: day, CurrentSHA: "aaa", Revisions: []revision{{SHA: "aaa"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := IndexRetained(context.Background(), root, dbPath, day); err != nil {
+		t.Fatal(err)
+	}
+	doc.SessionDate = "2026-09-25"
+	if err := writeJSON(filepath.Join(dir, "aaa.json"), doc); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := IndexRetained(context.Background(), root, dbPath, day); err != nil {
+		t.Fatal(err)
+	}
+	if err := AlignQuotationCurrent(root, dbPath, day); err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.OpenReadOnly(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	current, err := db.QueryQuotationRevisions(context.Background(), store.QuotationQuery{From: day, To: day})
+	if err != nil || len(current) != 0 {
+		t.Fatalf("invalid document was promoted: current=%+v err=%v", current, err)
+	}
+}
+
 func sampleDoc(day, sha string, row Row) Document {
 	row.SessionDate = day
 	row.SourceSHA256 = sha

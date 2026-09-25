@@ -73,10 +73,13 @@ including a retained previous hash.`,
 			dbPath := quotationDBPath(dbFlag)
 			ctx, cancel := boundCtx(cmd.Context(), flags)
 			defer cancel()
-			if err := quotationreport.AlignRange(dataDir, dbPath, from, to); err != nil {
-				return err
+			sha := strings.TrimSpace(shaFlag)
+			if sha == "" {
+				if err := quotationreport.CheckQuotationCurrentRange(ctx, dataDir, dbPath, from, to); err != nil {
+					return err
+				}
 			}
-			payload, err := loadQuotationRows(ctx, dbPath, from, to, strings.TrimSpace(shaFlag), splitCSV(symbolsFlag))
+			payload, err := loadQuotationRows(ctx, dbPath, from, to, sha, splitCSV(symbolsFlag))
 			if err != nil {
 				if errors.Is(err, store.ErrQuotationRevisionNotFound) {
 					return notFoundErr(err)

@@ -260,8 +260,11 @@ func AlignQuotationCurrent(root, dbPath, session string) error {
 	if idx.CurrentSHA == "" {
 		return db.ClearQuotationCurrent(ctx, session)
 	}
+	if !listedRevision(idx, idx.CurrentSHA) {
+		return db.ClearQuotationCurrent(ctx, session)
+	}
 	doc, loadErr := loadDocument(sessionDir(root, session), idx.CurrentSHA)
-	if loadErr != nil || doc.Contract != ContractID || doc.Source.SHA256 != idx.CurrentSHA {
+	if loadErr != nil || rejectDocument(doc, session, idx.CurrentSHA) != "" {
 		return db.ClearQuotationCurrent(ctx, session)
 	}
 	views, err := db.QueryQuotationRevisions(ctx, store.QuotationQuery{From: session, To: session, SHA: idx.CurrentSHA})
@@ -277,18 +280,72 @@ func AlignQuotationCurrent(root, dbPath, session string) error {
 	return db.PromoteQuotationRevision(ctx, session, idx.CurrentSHA)
 }
 
-// AlignRange aligns every retained session directory inside the inclusive date span.
-func AlignRange(root, dbPath, from, to string) error {
+func listedRevision(idx indexFile, sha string) bool {
+	for _, rev := range idx.Revisions {
+		if rev.SHA == sha {
+			return true
+		}
+	}
+	return false
+}
+
+// CheckQuotationCurrentRange verifies retained and SQLite current pointers
+// without modifying either store. IndexRetained repairs a mismatch.
+func CheckQuotationCurrentRange(ctx context.Context, root, dbPath, from, to string) error {
 	days, err := SessionDirs(root, "")
 	if err != nil {
 		return err
 	}
+	expected := map[string]string{}
 	for _, day := range days {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if day < from || day > to {
 			continue
 		}
-		if err := AlignQuotationCurrent(root, dbPath, day); err != nil {
+		dir := sessionDir(root, day)
+		idx, err := loadIndex(dir)
+		if err != nil {
 			return err
+		}
+		if idx.CurrentSHA == "" || !listedRevision(idx, idx.CurrentSHA) {
+			continue
+		}
+		doc, err := loadDocument(dir, idx.CurrentSHA)
+		if err == nil && rejectDocument(doc, day, idx.CurrentSHA) == "" {
+			expected[day] = idx.CurrentSHA
+		} else if err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	actual := map[string]string{}
+	if _, err := os.Stat(dbPath); err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+	} else {
+		db, err := store.OpenReadOnlyContext(ctx, dbPath)
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+		views, err := db.QueryQuotationRevisions(ctx, store.QuotationQuery{From: from, To: to})
+		if err != nil {
+			return err
+		}
+		for _, view := range views {
+			actual[view.SessionDate] = view.SourceSHA256
+		}
+	}
+	for day, sha := range expected {
+		if actual[day] != sha {
+			return fmt.Errorf("quotation current mismatch for %s: run quotation-report index to reconcile retained data and SQLite", day)
+		}
+	}
+	for day, sha := range actual {
+		if expected[day] != sha {
+			return fmt.Errorf("quotation current mismatch for %s: run quotation-report index to reconcile retained data and SQLite", day)
 		}
 	}
 	return nil

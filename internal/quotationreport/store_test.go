@@ -198,7 +198,7 @@ func TestOpenRepairsInterruptedPromote(t *testing.T) {
 	doc := Document{
 		Contract: ContractID, SessionDate: session,
 		Source: Source{Type: SourceType, URL: next.URL, SHA256: next.SHA, ByteLength: len(next.Body), AcquiredAt: when.Add(time.Hour).UTC().Format(time.RFC3339), PDFPath: next.SHA + ".pdf"},
-		Rows:   second.Rows,
+		Rows:   []Row{fillStatus(second.Rows[0])},
 	}
 	dir := sessionDir(root, session)
 	if err := writeJSON(filepath.Join(dir, next.SHA+".json"), doc); err != nil {

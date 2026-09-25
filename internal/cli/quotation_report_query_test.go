@@ -188,6 +188,48 @@ func TestQuotationReportQueryEmptyIsReadOnly(t *testing.T) {
 	}
 }
 
+func TestQuotationReportQueryExistingDBIsReadOnly(t *testing.T) {
+	home := t.TempDir()
+	t.Cleanup(func() { _, _ = cliutil.SetHomeOverride("") })
+	data := filepath.Join(home, "data")
+	closeV := 1.0
+	admitSession(t, data, "2026-09-24", "aaa", []quotationreport.Row{{Symbol: "AT", Close: &closeV}}, nil)
+	dbPath := filepath.Join(data, "data.db")
+	if err := os.Chmod(dbPath, 0o400); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dbPath, 0o600) })
+	_ = runQuotation(t, "quotation-report", "query", "--date", "20260924", "--db", dbPath, "--json", "--no-learn", "--home", home)
+	info, err := os.Stat(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o400 {
+		t.Fatalf("query changed database mode to %04o", info.Mode().Perm())
+	}
+}
+
+func TestQuotationReportQueryRejectsSplitCurrent(t *testing.T) {
+	home := t.TempDir()
+	t.Cleanup(func() { _, _ = cliutil.SetHomeOverride("") })
+	data := filepath.Join(home, "data")
+	closeV := 1.0
+	admitSession(t, data, "2026-09-24", "aaa", []quotationreport.Row{{Symbol: "AT", Close: &closeV}}, nil)
+	if err := os.Rename(filepath.Join(data, "quotation-reports", "2026-09-24"), filepath.Join(data, "retained-away")); err != nil {
+		t.Fatal(err)
+	}
+	root := RootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"quotation-report", "query", "--date", "20260924", "--json", "--no-learn", "--home", home})
+	if err := root.Execute(); err == nil {
+		t.Fatalf("query returned stale current after retained directory moved: %s", out.String())
+	}
+	// Explicit SHA selects stored history, regardless of current-pointer repair.
+	_ = runQuotation(t, "quotation-report", "query", "--date", "20260924", "--sha", "aaa", "--json", "--no-learn", "--home", home)
+}
+
 func TestQuotationReportQueryUnknownSHA(t *testing.T) {
 	home := t.TempDir()
 	t.Cleanup(func() { _, _ = cliutil.SetHomeOverride("") })

@@ -13,6 +13,10 @@ automation for this independent repo (that rule applies only when publishing
 
 ## [Unreleased]
 
+### Added
+
+- `quotation-report query` reads admitted Daily Quotation Report rows across sessions on contract `pse-edge-quotation-rows-v1`. `quotation-report index` loads revisions already named by `index.json` and does not download PDFs. The `data.db` tables are internal. A dash stays null `reported_dash`, not zero. This does not change `history`, `export eod`, or `pse_eod_prices` ([#61](https://github.com/ph-commons/pse-edge-pp-cli/issues/61)).
+
 ## [0.1.8] - 2026-09-25
 
 ### Added

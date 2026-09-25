@@ -100,6 +100,7 @@ PSE_QUOTATION_LISTING_URL overrides the listing page only. It is not a PDF URL.`
 	cmd.Flags().StringVar(&symbolsFlag, "symbols", "", "Comma-separated symbols to cover; omitted means the whole report")
 	cmd.Flags().BoolVar(&refresh, "refresh", false, "Read the listing again. Same PDF bytes are reused. A new hash is kept as a revision.")
 	_ = cmd.MarkFlagRequired("date")
+	cmd.AddCommand(newQuotationReportQueryCmd(flags), newQuotationReportIndexCmd(flags))
 	return cmd
 }
 

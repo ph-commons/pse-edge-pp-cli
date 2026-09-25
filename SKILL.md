@@ -74,6 +74,8 @@ MCP: `go install …/pse-edge-pp-mcp@latest` → `claude mcp add pse-edge-pp-mcp
 | One day's filings, bytes kept | `pse-edge-pp-cli filings day --date YYYYMMDD --out DIR --json` |
 | Export local EOD/index | `pse-edge-pp-cli export eod\|index --from YYYY-MM-DD --format jsonl` |
 | Official quotation report | `pse-edge-pp-cli quotation-report --date YYYYMMDD --json` |
+| Quotation rows across sessions | `pse-edge-pp-cli quotation-report query --from YYYYMMDD --to YYYYMMDD --json` |
+| Rebuild quotation rows from retained JSON | `pse-edge-pp-cli quotation-report index --json` |
 | 17-Q/17-A deadlines | `pse-edge-pp-cli deadlines AT --json` |
 | Typed financials | `pse-edge-pp-cli financials AT --json` |
 | Stale local data | `pse-edge-pp-cli stale --json` |
@@ -88,6 +90,7 @@ MCP: `go install …/pse-edge-pp-mcp@latest` → `claude mcp add pse-edge-pp-mcp
 - Gate EOD on `session` — blank change fields on non-trading days are **states**, not zeros.
 - `history` / `drift` / `movers` / `breadth` / `deadlines` need `sync market` when the local store is empty.
 - `quotation-report` is the official Daily Quotation Report for one session. It is not `history` and it does not change `pse-edge-export-eod-v1`. A dash is null (`reported_dash`), not a zero or a suspension. `acquired_at` is not a 16:30 publication claim. Parsing needs `pdftotext`.
+- `quotation-report query` is contract `pse-edge-quotation-rows-v1`. `quotation-report index` reads retained JSON only and does not download PDFs. `data.db` quotation tables are internal. `history` and `export eod` are unchanged. A dash is null, not zero.
 - Announcements search: server ignores free-text `keyword` — CLI filters titles client-side.
 - Filings search is **not** an authoritative complete corpus (`complete` is relative to `announcements/search.ax` only). Prefer `filings get --edge-no` when a viewer URL is known. Search rows have `edge_no`, not `file_id`; use `filings latest-body SYMBOL` for newest `file_id` + body.
 - `filings day` retains original disclosure bytes and a `pse-edge-disclosure-day-v1` manifest. `corpus_complete` is always false. Exit 6 is a partial bundle. Do not read those files from `data.db`.

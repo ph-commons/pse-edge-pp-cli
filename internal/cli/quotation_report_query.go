@@ -66,9 +66,16 @@ including a retained previous hash.`,
 			if err != nil {
 				return usageErr(err)
 			}
+			dataDir, err := cliutil.DataDir()
+			if err != nil {
+				return configErr(err)
+			}
 			dbPath := quotationDBPath(dbFlag)
 			ctx, cancel := boundCtx(cmd.Context(), flags)
 			defer cancel()
+			if err := quotationreport.AlignRange(dataDir, dbPath, from, to); err != nil {
+				return err
+			}
 			payload, err := loadQuotationRows(ctx, dbPath, from, to, strings.TrimSpace(shaFlag), splitCSV(symbolsFlag))
 			if err != nil {
 				if errors.Is(err, store.ErrQuotationRevisionNotFound) {

@@ -64,7 +64,8 @@ func SessionDirs(root, session string) ([]string, error) {
 }
 
 // IndexRetained loads revisions named by index.json. It does not read PDF bytes
-// and it does not call the network. dbPath is opened only when a revision is admitted.
+// and it does not call the network. An existing database is also opened when
+// the current file is skipped, so a stale is_current flag can be cleared.
 func IndexRetained(ctx context.Context, root, dbPath, session string) (IndexResult, error) {
 	result := IndexResult{Indexed: []IndexHit{}, Skipped: []IndexSkip{}}
 	sessions, err := SessionDirs(root, session)
@@ -95,7 +96,7 @@ func IndexRetained(ctx context.Context, root, dbPath, session string) (IndexResu
 		if err := ctx.Err(); err != nil {
 			return result, err
 		}
-		if err := indexSession(ctx, root, day, &result, open); err != nil {
+		if err := indexSession(ctx, root, day, dbPath, &result, open); err != nil {
 			return result, err
 		}
 	}
@@ -103,7 +104,7 @@ func IndexRetained(ctx context.Context, root, dbPath, session string) (IndexResu
 	return result, nil
 }
 
-func indexSession(ctx context.Context, root, day string, result *IndexResult, open func() (*store.Store, error)) error {
+func indexSession(ctx context.Context, root, day, dbPath string, result *IndexResult, open func() (*store.Store, error)) error {
 	dir := sessionDir(root, day)
 	info, err := os.Stat(dir)
 	if err != nil {
@@ -182,13 +183,13 @@ func indexSession(ctx context.Context, root, day string, result *IndexResult, op
 		}
 		result.Indexed = append(result.Indexed, IndexHit{SessionDate: day, SHA256: rev.SHA, Rows: len(doc.Rows)})
 	}
-	return finishSessionCurrent(ctx, day, idx.CurrentSHA, result, open)
+	return finishSessionCurrent(ctx, day, dbPath, idx.CurrentSHA, result, open)
 }
 
 // finishSessionCurrent promotes the index.json current SHA only when that file
 // was admitted. A skipped current file clears is_current so an older revision
 // is not labeled current.
-func finishSessionCurrent(ctx context.Context, day, currentSHA string, result *IndexResult, open func() (*store.Store, error)) error {
+func finishSessionCurrent(ctx context.Context, day, dbPath, currentSHA string, result *IndexResult, open func() (*store.Store, error)) error {
 	saw := false
 	currentOK := false
 	for _, hit := range result.Indexed {
@@ -200,15 +201,25 @@ func finishSessionCurrent(ctx context.Context, day, currentSHA string, result *I
 			currentOK = true
 		}
 	}
-	if !saw {
+	if currentSHA != "" && currentOK {
+		db, err := open()
+		if err != nil {
+			return err
+		}
+		return db.PromoteQuotationRevision(ctx, day, currentSHA)
+	}
+	if !saw && currentSHA == "" {
 		return nil
+	}
+	if _, err := os.Stat(dbPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
 	}
 	db, err := open()
 	if err != nil {
 		return err
-	}
-	if currentSHA != "" && currentOK {
-		return db.PromoteQuotationRevision(ctx, day, currentSHA)
 	}
 	return db.ClearQuotationCurrent(ctx, day)
 }

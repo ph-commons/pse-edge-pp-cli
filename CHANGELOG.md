@@ -19,7 +19,7 @@ automation for this independent repo (that rule applies only when publishing
 
 ### Fixed
 
-- `quotation-report` keeps the SQLite current SHA aligned with `index.json`. A failed index write or promote leaves the previous revision current in both. `quotation-report index` does not label an older revision current when the index's current file is skipped ([#61](https://github.com/ph-commons/pse-edge-pp-cli/issues/61)).
+- `quotation-report` keeps the SQLite current SHA aligned with `index.json`. A failed index write or promote leaves the previous revision current in both, and a restore failure is returned. The next `quotation-report` open or `query` promotes a current file whose rows are already stored. `quotation-report index` clears a stale current flag when the current file is missing, including when no other file is indexed ([#61](https://github.com/ph-commons/pse-edge-pp-cli/issues/61)).
 
 ## [0.1.8] - 2026-09-25
 

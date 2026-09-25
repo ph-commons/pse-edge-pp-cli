@@ -127,6 +127,60 @@ func TestIndexRetainedSkipsAndKeepsCount(t *testing.T) {
 	assertCount(`SELECT COUNT(*) FROM pse_quotation_rows WHERE source_sha256='abc'`, 1)
 }
 
+func TestIndexRetainedClearsStaleCurrentWhenNothingIndexed(t *testing.T) {
+	root := t.TempDir()
+	dbPath := filepath.Join(root, "data.db")
+	day := "2026-09-24"
+	dir := sessionDir(root, day)
+	db, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	closeV := 1.0
+	in := store.QuotationRevisionInput{
+		SessionDate: day, SourceSHA256: "aaa", SourceURL: "https://documents.pse.com.ph/aaa.pdf",
+		AcquiredAt: "2026-09-24T12:00:00Z", PDFPath: "aaa.pdf",
+		Rows: []store.QuotationStoredRow{{
+			Symbol: "AT", RowLocator: "r1", Page: 1, Close: &closeV,
+			FieldStatus: map[string]string{"close": "ok"},
+		}},
+	}
+	if err := db.PersistQuotationRevision(context.Background(), in); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	if err := writeJSON(filepath.Join(dir, "index.json"), indexFile{
+		SessionDate: day, CurrentSHA: "aaa", Revisions: []revision{{SHA: "aaa"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := IndexRetained(context.Background(), root, dbPath, day)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Indexed) != 0 {
+		t.Fatalf("indexed=%+v", res.Indexed)
+	}
+	missing := false
+	for _, skip := range res.Skipped {
+		if skip.Reason == "missing" && strings.HasSuffix(skip.Path, "aaa.json") {
+			missing = true
+		}
+	}
+	if !missing {
+		t.Fatalf("skipped=%+v", res.Skipped)
+	}
+	db, err = store.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	cur, err := db.QueryQuotationRevisions(context.Background(), store.QuotationQuery{From: day, To: day})
+	if err != nil || len(cur) != 0 {
+		t.Fatalf("current=%+v err=%v", cur, err)
+	}
+}
+
 func TestIndexRetainedSkippedCurrentIsNotCurrent(t *testing.T) {
 	root := t.TempDir()
 	dbPath := filepath.Join(root, "data.db")

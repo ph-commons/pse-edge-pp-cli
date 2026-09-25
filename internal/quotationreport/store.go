@@ -5,6 +5,8 @@ package quotationreport
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -128,6 +130,16 @@ var promoteAdmitted = func(root, session, sha string) error {
 	return db.PromoteQuotationRevision(context.Background(), session, sha)
 }
 
+var restoreAdmittedIndex = func(path string, prev []byte, missing bool) error {
+	if missing {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	return os.WriteFile(path, prev, 0o644)
+}
+
 // Admit stores PDF bytes and, when parsed is non-nil, makes that hash current.
 // The same hash does not add another revision. A new hash keeps the previous PDF.
 // Rows are stored before index.json advances. The SQLite current flag moves
@@ -204,10 +216,8 @@ func Admit(root, session string, pdf PDF, discovery Discovery, parsed *Parsed, n
 	}
 	if err := promoteAdmitted(root, session, pdf.SHA); err != nil {
 		if writeIndex {
-			if prevReadErr == nil {
-				_ = os.WriteFile(indexPath, prevIndex, 0o644)
-			} else {
-				_ = os.Remove(indexPath)
+			if restoreErr := restoreAdmittedIndex(indexPath, prevIndex, os.IsNotExist(prevReadErr)); restoreErr != nil {
+				return Document{}, false, previous, fmt.Errorf("promote: %w; restore index: %v", err, restoreErr)
 			}
 		}
 		return Document{}, false, previous, err
@@ -225,6 +235,59 @@ func storeAdmitted(root string, doc Document) error {
 	}
 	defer db.Close()
 	return db.StoreQuotationRevision(context.Background(), quotationInput(doc))
+}
+
+// AlignQuotationCurrent makes SQLite's current SHA match index.json.
+// A crash after the index write and before promote is repaired here.
+// A named current file with no stored rows clears is_current.
+func AlignQuotationCurrent(root, dbPath, session string) error {
+	if _, err := os.Stat(dbPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	idx, err := loadIndex(sessionDir(root, session))
+	if err != nil {
+		return err
+	}
+	db, err := store.Open(dbPath)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	ctx := context.Background()
+	if idx.CurrentSHA == "" {
+		return db.ClearQuotationCurrent(ctx, session)
+	}
+	views, err := db.QueryQuotationRevisions(ctx, store.QuotationQuery{From: session, To: session, SHA: idx.CurrentSHA})
+	if err != nil {
+		if errors.Is(err, store.ErrQuotationRevisionNotFound) {
+			return db.ClearQuotationCurrent(ctx, session)
+		}
+		return err
+	}
+	if len(views) == 1 && views[0].Current {
+		return nil
+	}
+	return db.PromoteQuotationRevision(ctx, session, idx.CurrentSHA)
+}
+
+// AlignRange aligns every retained session directory inside the inclusive date span.
+func AlignRange(root, dbPath, from, to string) error {
+	days, err := SessionDirs(root, "")
+	if err != nil {
+		return err
+	}
+	for _, day := range days {
+		if day < from || day > to {
+			continue
+		}
+		if err := AlignQuotationCurrent(root, dbPath, day); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func quotationInput(doc Document) store.QuotationRevisionInput {

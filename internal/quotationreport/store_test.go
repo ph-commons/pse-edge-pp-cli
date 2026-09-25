@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -179,6 +180,88 @@ func TestAdmitIndexWriteFailureKeepsPreviousCurrent(t *testing.T) {
 	doc, ok, err := ReadCurrent(root, session)
 	if err != nil || !ok || doc.Source.SHA256 != "aaa" {
 		t.Fatalf("read=%s ok=%v err=%v", doc.Source.SHA256, ok, err)
+	}
+}
+
+func TestOpenRepairsInterruptedPromote(t *testing.T) {
+	root := t.TempDir()
+	session := "2026-09-24"
+	when := time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
+	disc := Discovery{PDFURL: "https://documents.pse.com.ph/a.pdf"}
+	first := &Parsed{SessionDate: session, Rows: []Row{{Symbol: "AT", RowLocator: "r1", Close: floatPtr(1)}}}
+	pdf := PDF{URL: disc.PDFURL, Body: []byte("%PDF-1\n"), SHA: "aaa"}
+	if _, _, _, err := Admit(root, session, pdf, disc, first, when); err != nil {
+		t.Fatal(err)
+	}
+	next := PDF{URL: "https://documents.pse.com.ph/b.pdf", Body: []byte("%PDF-2\n"), SHA: "bbb"}
+	second := &Parsed{SessionDate: session, Rows: []Row{{Symbol: "AT", RowLocator: "r1", Close: floatPtr(2)}}}
+	doc := Document{
+		Contract: ContractID, SessionDate: session,
+		Source: Source{Type: SourceType, URL: next.URL, SHA256: next.SHA, ByteLength: len(next.Body), AcquiredAt: when.Add(time.Hour).UTC().Format(time.RFC3339), PDFPath: next.SHA + ".pdf"},
+		Rows:   second.Rows,
+	}
+	dir := sessionDir(root, session)
+	if err := writeJSON(filepath.Join(dir, next.SHA+".json"), doc); err != nil {
+		t.Fatal(err)
+	}
+	if err := storeAdmitted(root, doc); err != nil {
+		t.Fatal(err)
+	}
+	idx, err := loadIndex(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	idx.CurrentSHA = next.SHA
+	idx.Revisions = append(idx.Revisions, revision{SHA: next.SHA, URL: next.URL})
+	if err := writeJSON(filepath.Join(dir, "index.json"), idx); err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.Open(filepath.Join(root, "data.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cur, err := db.QueryQuotationRevisions(context.Background(), store.QuotationQuery{From: session, To: session})
+	db.Close()
+	if err != nil || len(cur) != 1 || cur[0].SourceSHA256 != "aaa" {
+		t.Fatalf("before repair=%+v err=%v", cur, err)
+	}
+	report, ok, err := Open(root, when, nil)
+	if err != nil || !ok || report.Source == nil || report.Source.SHA256 != "bbb" {
+		t.Fatalf("open=%+v ok=%v err=%v", report.Source, ok, err)
+	}
+	db, err = store.Open(filepath.Join(root, "data.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	cur, err = db.QueryQuotationRevisions(context.Background(), store.QuotationQuery{From: session, To: session})
+	if err != nil || len(cur) != 1 || cur[0].SourceSHA256 != "bbb" || !cur[0].Current {
+		t.Fatalf("after repair=%+v err=%v", cur, err)
+	}
+}
+
+func TestAdmitPromoteFailureReportsRestoreError(t *testing.T) {
+	root := t.TempDir()
+	session := "2026-09-24"
+	when := time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
+	disc := Discovery{PDFURL: "https://documents.pse.com.ph/a.pdf"}
+	parsed := &Parsed{SessionDate: session, Rows: []Row{{Symbol: "AT", RowLocator: "r1", Close: floatPtr(1)}}}
+	pdf := PDF{URL: disc.PDFURL, Body: []byte("%PDF-1\n"), SHA: "aaa"}
+	if _, _, _, err := Admit(root, session, pdf, disc, parsed, when); err != nil {
+		t.Fatal(err)
+	}
+	prevPromote := promoteAdmitted
+	prevRestore := restoreAdmittedIndex
+	promoteAdmitted = func(string, string, string) error { return errors.New("promote failed") }
+	restoreAdmittedIndex = func(string, []byte, bool) error { return errors.New("restore failed") }
+	t.Cleanup(func() {
+		promoteAdmitted = prevPromote
+		restoreAdmittedIndex = prevRestore
+	})
+	next := PDF{URL: "https://documents.pse.com.ph/b.pdf", Body: []byte("%PDF-2\n"), SHA: "bbb"}
+	_, _, _, err := Admit(root, session, next, disc, parsed, when.Add(time.Hour))
+	if err == nil || !strings.Contains(err.Error(), "restore index") {
+		t.Fatalf("err=%v", err)
 	}
 }
 

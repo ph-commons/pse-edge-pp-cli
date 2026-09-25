@@ -21,7 +21,7 @@ automation for this independent repo (that rule applies only when publishing
 
 ### Fixed
 
-- `quotation-report` keeps the SQLite current SHA aligned with `index.json`. A failed index write leaves the previous revision current. If promotion fails, the CLI attempts to restore the prior index and reports any restoration failure. The next `quotation-report` open repairs a valid interrupted promotion; `query` reports a mismatch without writing to SQLite. A missing current file stays not current after index and after a later query ([#61](https://github.com/ph-commons/pse-edge-pp-cli/issues/61)).
+- `quotation-report` aligns the SQLite current SHA with `index.json` when admission succeeds. A failed index write does not promote the SQLite current SHA. If promotion fails, the CLI attempts to restore the prior index and reports any restoration failure. The next `quotation-report` open repairs a valid interrupted promotion; `query` reports a mismatch without writing to SQLite. A missing current file stays not current after index and after a later query ([#61](https://github.com/ph-commons/pse-edge-pp-cli/issues/61)).
 
 ## [0.1.8] - 2026-09-25
 

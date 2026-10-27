@@ -107,7 +107,6 @@ generated sync command's event stream.`,
 
   # Everything already registered, default 30d window
   pse-edge-pp-cli sync market`,
-		Annotations: map[string]string{"mcp:read-only": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if dryRunOK(flags) {
 				return nil

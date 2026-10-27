@@ -75,6 +75,11 @@ func FindReport(ctx context.Context, listingURL string, session time.Time) (Foun
 	if err != nil {
 		return Found{}, err
 	}
+	ajax, err := resolveAJAXURL(listing, ajaxURL)
+	if err != nil {
+		return Found{}, err
+	}
+	ajaxURL = ajax.String()
 	wantTitle := session.Format("January 2, 2006")
 	var matches []ajaxRow
 	for pageNo := 0; pageNo < ajaxPageCap; pageNo++ {
@@ -195,6 +200,18 @@ type ajaxRow struct {
 }
 
 func loadPosts(ctx context.Context, client *http.Client, listing *url.URL, ajaxURL, nonce, action, tableID string, start int) ([]ajaxRow, error) {
+	ajax, err := resolveAJAXURL(listing, ajaxURL)
+	if err != nil {
+		return nil, err
+	}
+	ajaxClient := *client
+	ajaxClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 3 {
+			return statusErr(StatusListingUnavailable, "too many AJAX redirects")
+		}
+		_, err := resolveAJAXURL(listing, req.URL.String())
+		return err
+	}
 	form := url.Values{}
 	form.Set("action", action)
 	form.Set("_ajax_nonce", nonce)
@@ -219,7 +236,7 @@ func loadPosts(ctx context.Context, client *http.Client, listing *url.URL, ajaxU
 		form.Set(fmt.Sprintf("columns[%d][search][value]", i), search)
 		form.Set(fmt.Sprintf("columns[%d][search][regex]", i), "false")
 	}
-	body, err := getBytes(ctx, client, http.MethodPost, ajaxURL, strings.NewReader(form.Encode()), "application/x-www-form-urlencoded", maxPageBytes, StatusListingUnavailable)
+	body, err := getBytes(ctx, &ajaxClient, http.MethodPost, ajax.String(), strings.NewReader(form.Encode()), "application/x-www-form-urlencoded", maxPageBytes, StatusListingUnavailable)
 	if err != nil {
 		return nil, err
 	}
@@ -230,6 +247,28 @@ func loadPosts(ctx context.Context, client *http.Client, listing *url.URL, ajaxU
 		return nil, statusErr(StatusListingUnavailable, "listing response was not JSON")
 	}
 	return payload.Data, nil
+}
+
+func resolveAJAXURL(listing *url.URL, raw string) (*url.URL, error) {
+	ref, err := url.Parse(raw)
+	if err != nil || listing == nil || listing.User != nil || listing.Hostname() == "" || (listing.Scheme != "http" && listing.Scheme != "https") {
+		return nil, statusErr(StatusListingUnavailable, "listing AJAX origin was invalid")
+	}
+	target := listing.ResolveReference(ref)
+	if target.User != nil || (target.Scheme != "http" && target.Scheme != "https") || !strings.EqualFold(target.Scheme, listing.Scheme) || !strings.EqualFold(target.Hostname(), listing.Hostname()) || effectivePort(target) != effectivePort(listing) {
+		return nil, statusErr(StatusListingUnavailable, "listing AJAX URL was not on the listing origin")
+	}
+	return target, nil
+}
+
+func effectivePort(u *url.URL) string {
+	if port := u.Port(); port != "" {
+		return port
+	}
+	if u.Scheme == "https" {
+		return "443"
+	}
+	return "80"
 }
 
 func categorySlug(categories string) string {

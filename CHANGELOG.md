@@ -13,6 +13,13 @@ automation for this independent repo (that rule applies only when publishing
 
 ## [Unreleased]
 
+### Fixed
+
+- MCP tools reject arguments with the wrong declared type and prevent callers from selecting local file paths. File-dependent `filings day` and `import` remain available through the CLI. Store-writing tools no longer advertise read-only behavior.
+- `workflow status` reads existing stores without creating or migrating them. Missing stores report an uninitialized-store error; older stores report that migration is required.
+- Quotation discovery restricts AJAX requests and redirects to the selected listing origin. Installer fallback keeps diagnostics in a private temporary directory.
+- Builds use Go 1.27.3 or newer and `golang.org/x/net` 0.60.0. The release workflow verifies each signed archive and its binary metadata before publication.
+
 ## [0.1.9] - 2026-09-26
 
 ### Added

@@ -60,7 +60,7 @@ Rates are null until their denominator is non-zero. Everything is
 local-only: events never leave this machine.`,
 		Example: `  pse-edge-pp-cli learnings stats
   pse-edge-pp-cli learnings stats --json`,
-		Annotations: map[string]string{"mcp:read-only": "true"},
+		Annotations: map[string]string{"mcp:local-write": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if dryRunOK(flags) {
 				return nil

@@ -30,7 +30,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.26.6'
+          go-version: '1.27.3'
           cache: true
 
       # Pinned to the v3.9.2 commit SHA: this action is the trust-critical
@@ -62,7 +62,10 @@ jobs:
             --certificate-identity-regexp 'https://github.com/ph-commons/pse-edge-pp-cli/.github/workflows/release.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$' \
             --certificate-oidc-issuer 'https://token.actions.githubusercontent.com'
 
-      - name: Publish release (signature verified)
+      - name: Verify release archives and metadata
+        run: bash scripts/verify-release.sh dist "${GITHUB_REF_NAME#v}" "$GITHUB_SHA" 1.27.3
+
+      - name: Publish release (artifacts verified)
         run: gh release edit "$GITHUB_REF_NAME" --draft=false
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -10,7 +10,7 @@ Created by [Nestor G Pestelos Jr](https://npestelos.com).
 
 ## Install
 
-Requires [Go 1.26.6 or newer](https://go.dev/dl/):
+Requires [Go 1.27.3 or newer](https://go.dev/dl/):
 
 ```bash
 go install github.com/ph-commons/pse-edge-pp-cli/cmd/pse-edge-pp-cli@latest
@@ -53,6 +53,12 @@ An MCP server binary is also available for IDE/desktop agents:
 ```bash
 go install github.com/ph-commons/pse-edge-pp-cli/cmd/pse-edge-pp-mcp@latest
 ```
+
+MCP callers cannot select local file paths. Set the application data location
+in the MCP host environment. `filings day` and `import` use files or stdin
+and remain available through the CLI. Store-writing tools advertise their
+write behavior. `workflow status` reads an existing store; initialize or
+migrate it through a CLI write command before using status.
 
 Manual Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 

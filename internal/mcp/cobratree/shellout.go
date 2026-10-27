@@ -47,7 +47,7 @@ func (c *cappedCapture) String() string {
 	return string(c.data)
 }
 
-func shellOutToCLI(cliPath func() (string, error), commandPath []string, blockedStructuredArgs map[string]bool, allowedStructuredArgs map[string]bool, positionals []positionalArg, readOnly bool, positionalWriteSinks map[int]bool) server.ToolHandlerFunc {
+func shellOutToCLI(cliPath func() (string, error), commandPath []string, blockedStructuredArgs map[string]bool, allowedStructuredArgs map[string]bool, positionals []positionalArg, readOnly bool, positionalWriteSinks map[int]bool, types map[string]string) server.ToolHandlerFunc {
 	lookupPath, lookupErr := cliPath()
 	prefixArgs := append([]string{}, commandPath...)
 	return func(ctx context.Context, req mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
@@ -56,6 +56,9 @@ func shellOutToCLI(cliPath func() (string, error), commandPath []string, blocked
 		}
 		args := req.GetArguments()
 		if err := validateMCPArgumentNames(args, allowedStructuredArgs); err != nil {
+			return boundedToolResultError(err.Error()), nil
+		}
+		if err := validateMCPArgumentTypes(args, types); err != nil {
 			return boundedToolResultError(err.Error()), nil
 		}
 		finalArgs := append([]string{}, prefixArgs...)
@@ -72,12 +75,36 @@ func shellOutToCLI(cliPath func() (string, error), commandPath []string, blocked
 			}
 			finalArgs = append(finalArgs, rawPositionals...)
 		}
+		if readOnly {
+			finalArgs = append(finalArgs, "--no-learn")
+		}
 		out, err := RunCLICommand(ctx, lookupPath, finalArgs)
 		if err != nil {
 			return boundedToolResultError(err.Error()), nil
 		}
 		return mcplib.NewToolResultText(bound.Text(out)), nil
 	}
+}
+
+// validateMCPArgumentTypes enforces the schema even when a caller invokes the
+// handler directly or SDK schema validation is unavailable.
+func validateMCPArgumentTypes(args map[string]any, types map[string]string) error {
+	for name, value := range args {
+		expected := types[name]
+		valid := false
+		switch expected {
+		case "boolean":
+			_, valid = value.(bool)
+		case "number":
+			_, valid = value.(float64)
+		case "string":
+			_, valid = value.(string)
+		}
+		if !valid {
+			return fmt.Errorf("MCP parameter %q must be a %s", name, expected)
+		}
+	}
+	return nil
 }
 
 func validateMCPArgumentNames(args map[string]any, allowed map[string]bool) error {
@@ -208,6 +235,13 @@ var blockedRootFlags = map[string]bool{
 	"token":                         true,
 }
 
+// These command-local options select files or directories. Remote resource
+// identifiers such as file-id are not local filesystem paths.
+var blockedLocalFileFlags = map[string]bool{
+	"db": true, "input": true, "output": true, "out": true,
+	"playbook-file": true, "notes-file": true, "playbook-notes-file": true,
+}
+
 func cliArgsFromMCP(args map[string]any, blocked map[string]bool) []string {
 	keys := make([]string, 0, len(args))
 	for k := range args {
@@ -228,6 +262,8 @@ func cliArgsFromMCP(args map[string]any, blocked map[string]bool) []string {
 		case bool:
 			if tv {
 				out = append(out, "--"+k)
+			} else {
+				out = append(out, "--"+k+"=false")
 			}
 		case float64:
 			out = append(out, "--"+k, strconv.FormatFloat(tv, 'f', -1, 64))

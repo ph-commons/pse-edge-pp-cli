@@ -288,7 +288,7 @@ func newPlaybookListCmd(flags *rootFlags) *cobra.Command {
 		Use:         "list",
 		Short:       "List stored playbooks (query_family, content presence, last observed)",
 		Example:     `  pse-edge-pp-cli playbook list --agent`,
-		Annotations: map[string]string{"mcp:read-only": "true"},
+		Annotations: map[string]string{"mcp:local-write": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if dryRunOK(flags) {
 				return nil

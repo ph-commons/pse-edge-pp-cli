@@ -21,11 +21,24 @@ type positionalArg struct {
 	Required  bool
 }
 
+// Build immutable types at registration time; Cobra's parent flag lookup can
+// mutate internal state and must not run concurrently for incoming calls.
+func argumentTypesForCommand(cmd *cobra.Command, allowed map[string]bool) map[string]string {
+	types := make(map[string]string, len(allowed))
+	for name := range allowed {
+		types[name] = "string"
+		if flag := cmd.Flag(name); flag != nil {
+			types[name] = schemaTypeForFlag(flag)
+		}
+	}
+	return types
+}
+
 func toolOptionsForFlags(cmd *cobra.Command, blocked map[string]bool, positionals []positionalArg) []mcplib.ToolOption {
 	var opts []mcplib.ToolOption
 	seen := map[string]bool{}
 	addFlag := func(flag *pflag.Flag) {
-		if flag == nil || flag.Hidden || flag.Deprecated != "" {
+		if flag == nil || flag.Hidden || flag.Deprecated != "" || blocked[flag.Name] {
 			return
 		}
 		if reservedStructuredArgs[flag.Name] {
@@ -85,18 +98,29 @@ func toolOptionForFlag(flag *pflag.Flag) mcplib.ToolOption {
 	if isRequired(flag) {
 		propOpts = append(propOpts, mcplib.Required())
 	}
+	switch schemaTypeForFlag(flag) {
+	case "boolean":
+		return mcplib.WithBoolean(flag.Name, propOpts...)
+	case "number":
+		return mcplib.WithNumber(flag.Name, propOpts...)
+	default:
+		switch flag.Value.Type() {
+		case "string", "stringSlice", "stringArray", "duration":
+		default:
+			propOpts[0] = mcplib.Description(flagDescription(flag) + " (unknown Cobra flag type " + flag.Value.Type() + "; pass as a string)")
+		}
+		return mcplib.WithString(flag.Name, propOpts...)
+	}
+}
+
+func schemaTypeForFlag(flag *pflag.Flag) string {
 	switch flag.Value.Type() {
 	case "bool":
-		return mcplib.WithBoolean(flag.Name, propOpts...)
-	case "int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64",
-		"float32", "float64", "count":
-		return mcplib.WithNumber(flag.Name, propOpts...)
-	case "string", "stringSlice", "stringArray", "duration":
-		return mcplib.WithString(flag.Name, propOpts...)
+		return "boolean"
+	case "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64", "float32", "float64", "count":
+		return "number"
 	default:
-		propOpts[0] = mcplib.Description(flagDescription(flag) + " (unknown Cobra flag type " + flag.Value.Type() + "; pass as a string)")
-		return mcplib.WithString(flag.Name, propOpts...)
+		return "string"
 	}
 }
 
@@ -199,6 +223,9 @@ func blockedStructuredArgsForCommand(cmd *cobra.Command) map[string]bool {
 			return
 		}
 		localFlags[flag.Name] = true
+		if blockedLocalFileFlags[flag.Name] {
+			blocked[flag.Name] = true
+		}
 	})
 	cmd.InheritedFlags().VisitAll(func(flag *pflag.Flag) {
 		if flag == nil || flag.Hidden || flag.Deprecated != "" {

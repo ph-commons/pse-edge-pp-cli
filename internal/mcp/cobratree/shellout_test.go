@@ -122,6 +122,13 @@ func TestCliArgsFromMCP_AllowsPerCommandFlags(t *testing.T) {
 	}
 }
 
+func TestCliArgsFromMCPPreservesExplicitFalse(t *testing.T) {
+	got := cliArgsFromMCP(map[string]any{"quiet": false}, nil)
+	if !reflect.DeepEqual(got, []string{"--quiet=false"}) {
+		t.Fatalf("explicit false serialized as %v", got)
+	}
+}
+
 func TestValidateMCPArgumentNamesRejectsArgsWhenNoParamsAllowed(t *testing.T) {
 	err := validateMCPArgumentNames(map[string]any{"query": "alpha"}, nil)
 	if err == nil {
@@ -424,6 +431,161 @@ func TestToolOptionsHideBlockedRootFlagsButKeepLocalCollisions(t *testing.T) {
 	}
 }
 
+func TestToolOptionsHideBlockedLocalFlags(t *testing.T) {
+	cmd := &cobra.Command{Use: "child"}
+	cmd.Flags().String("output", "", "local output")
+	cmd.Flags().Bool("json", false, "JSON output")
+	blocked := map[string]bool{"output": true}
+	tool := mcplib.NewTool("child", toolOptionsForFlags(cmd, blocked, nil)...)
+	if _, ok := tool.InputSchema.Properties["output"]; ok {
+		t.Fatal("blocked local output flag is advertised in the schema")
+	}
+	if _, ok := tool.InputSchema.Properties["json"]; !ok {
+		t.Fatal("allowed local flag is missing from the schema")
+	}
+}
+
+func TestBlockedStructuredArgsRejectsLocalFilesystemFlags(t *testing.T) {
+	cmd := &cobra.Command{Use: "child"}
+	cmd.Flags().String("db", "", "SQLite file path")
+	cmd.Flags().String("notes-file", "", "notes file")
+	cmd.Flags().String("file-id", "", "remote resource ID")
+	blocked := blockedStructuredArgsForCommand(cmd)
+	for _, name := range []string{"db", "notes-file"} {
+		if !blocked[name] {
+			t.Errorf("filesystem flag %q remains available", name)
+		}
+	}
+	if blocked["file-id"] {
+		t.Fatal("remote resource ID was treated as a file path")
+	}
+}
+
+func TestRegisteredToolRejectsWrongBooleanType(t *testing.T) {
+	bin := writeShelloutHelper(t, "success")
+	root := &cobra.Command{Use: "root"}
+	child := &cobra.Command{Use: "child", Run: func(*cobra.Command, []string) {}}
+	child.Flags().Bool("json", false, "JSON output")
+	root.AddCommand(child)
+	s := server.NewMCPServer("test", "0.0.0")
+	RegisterAll(s, root, func() (string, error) { return bin, nil })
+	tool := s.GetTool("child")
+	if tool == nil {
+		t.Fatal("child tool was not registered")
+	}
+	result, err := tool.Handler(context.Background(), mcplib.CallToolRequest{Params: mcplib.CallToolParams{
+		Arguments: map[string]any{"json": "not-a-boolean"},
+	}})
+	if err != nil {
+		t.Fatalf("handler returned transport error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("handler accepted a string for a boolean parameter")
+	}
+}
+
+func TestWorkflowStatusDisablesLearningHooks(t *testing.T) {
+	bin := writeShelloutHelper(t, "success")
+	root := &cobra.Command{Use: "root"}
+	workflow := &cobra.Command{Use: "workflow"}
+	status := &cobra.Command{Use: "status", Run: func(*cobra.Command, []string) {}, Annotations: map[string]string{"mcp:read-only": "true"}}
+	workflow.AddCommand(status)
+	root.AddCommand(workflow)
+	s := server.NewMCPServer("test", "0.0.0")
+	RegisterAll(s, root, func() (string, error) { return bin, nil })
+	tool := s.GetTool("workflow_status")
+	if tool == nil {
+		t.Fatal("workflow status tool was not registered")
+	}
+	result, err := tool.Handler(context.Background(), mcplib.CallToolRequest{})
+	if err != nil || result.IsError || !strings.Contains(toolResultText(result), "--no-learn") {
+		t.Fatalf("status must disable learning hooks: result=%v, error=%v", toolResultText(result), err)
+	}
+}
+
+func TestReadOnlyToolDisablesLearningHooks(t *testing.T) {
+	bin := writeShelloutHelper(t, "success")
+	root := &cobra.Command{Use: "root"}
+	child := &cobra.Command{Use: "inspect", Run: func(*cobra.Command, []string) {}, Annotations: map[string]string{"mcp:read-only": "true"}}
+	root.AddCommand(child)
+	s := server.NewMCPServer("test", "0.0.0")
+	RegisterAll(s, root, func() (string, error) { return bin, nil })
+	tool := s.GetTool("inspect")
+	if tool == nil {
+		t.Fatal("inspect tool was not registered")
+	}
+	result, err := tool.Handler(context.Background(), mcplib.CallToolRequest{})
+	if err != nil || result.IsError || !strings.Contains(toolResultText(result), "--no-learn") {
+		t.Fatalf("read-only tool must disable learning hooks: result=%v, error=%v", toolResultText(result), err)
+	}
+}
+
+func TestRegisteredToolRejectsUnadvertisedArgsField(t *testing.T) {
+	bin := writeShelloutHelper(t, "success")
+	root := &cobra.Command{Use: "root"}
+	child := &cobra.Command{Use: "search <query>", Run: func(*cobra.Command, []string) {}}
+	root.AddCommand(child)
+	s := server.NewMCPServer("test", "0.0.0")
+	RegisterAll(s, root, func() (string, error) { return bin, nil })
+	tool := s.GetTool("search")
+	if tool == nil {
+		t.Fatal("search tool was not registered")
+	}
+	if _, ok := tool.Tool.InputSchema.Properties["args"]; ok {
+		t.Fatal("test requires args to be absent from the advertised schema")
+	}
+	result, err := tool.Handler(context.Background(), mcplib.CallToolRequest{Params: mcplib.CallToolParams{
+		Arguments: map[string]any{"args": "ordinary query"},
+	}})
+	if err != nil || !result.IsError {
+		t.Fatalf("unadvertised args field was accepted: result=%v error=%v", toolResultText(result), err)
+	}
+}
+
+func TestRegisteredToolRejectsLocalPathsButKeepsResourceID(t *testing.T) {
+	bin := writeShelloutHelper(t, "success")
+	root := &cobra.Command{Use: "root"}
+	child := &cobra.Command{Use: "inspect", Run: func(*cobra.Command, []string) {}}
+	child.Flags().String("db", "", "database path")
+	child.Flags().String("file-id", "", "remote resource ID")
+	root.AddCommand(child)
+	s := server.NewMCPServer("test", "0.0.0")
+	RegisterAll(s, root, func() (string, error) { return bin, nil })
+	tool := s.GetTool("inspect")
+	if tool == nil {
+		t.Fatal("inspect tool was not registered")
+	}
+	if _, ok := tool.Tool.InputSchema.Properties["db"]; ok {
+		t.Fatal("database path remains in the schema")
+	}
+	result, err := tool.Handler(context.Background(), mcplib.CallToolRequest{Params: mcplib.CallToolParams{Arguments: map[string]any{"db": "fixture"}}})
+	if err != nil || !result.IsError {
+		t.Fatalf("database path was accepted: result=%v error=%v", toolResultText(result), err)
+	}
+	result, err = tool.Handler(context.Background(), mcplib.CallToolRequest{Params: mcplib.CallToolParams{Arguments: map[string]any{"file-id": "123"}}})
+	if err != nil || result.IsError || !strings.Contains(toolResultText(result), "--file-id 123") {
+		t.Fatalf("remote ID was rejected: result=%v error=%v", toolResultText(result), err)
+	}
+}
+
+func TestArgumentTypesMatchAdvertisedSchema(t *testing.T) {
+	cmd := &cobra.Command{Use: "inspect"}
+	cmd.Flags().Bool("json", false, "JSON output")
+	cmd.Flags().Int("limit", 0, "limit")
+	cmd.Flags().String("query", "", "query")
+	cmd.Flags().StringSlice("resource", nil, "resources")
+	blocked := blockedStructuredArgsForCommand(cmd)
+	allowed := allowedStructuredArgsForCommand(cmd, blocked, nil, false)
+	types := argumentTypesForCommand(cmd, allowed)
+	tool := mcplib.NewTool("inspect", toolOptionsForFlags(cmd, blocked, nil)...)
+	for name, expected := range types {
+		property, ok := tool.InputSchema.Properties[name].(map[string]any)
+		if !ok || property["type"] != expected {
+			t.Errorf("%s type = %q, schema = %#v", name, expected, tool.InputSchema.Properties[name])
+		}
+	}
+}
+
 func TestPositionalVariadicNestedAngleBracketsSanitizesKey(t *testing.T) {
 	// "[<slug>...]" is a nested optional variadic. A naive end-trim leaves an
 	// inner ">" (schema key "slug>"), which the Anthropic API rejects with a
@@ -514,6 +676,7 @@ func TestShellOutSinglePositionalArgsFieldPreservesWhitespace(t *testing.T) {
 		positionals,
 		false,
 		nil,
+		map[string]string{"args": "string", "query": "string"},
 	)
 
 	result, err := handler(context.Background(), mcplib.CallToolRequest{Params: mcplib.CallToolParams{
@@ -547,6 +710,7 @@ func TestShellOutStructuredPositionalPreservesWhitespace(t *testing.T) {
 		positionals,
 		false,
 		nil,
+		map[string]string{"args": "string", "friend": "string"},
 	)
 
 	result, err := handler(context.Background(), mcplib.CallToolRequest{Params: mcplib.CallToolParams{
@@ -580,6 +744,7 @@ func TestShellOutRejectsUnknownStructuredParameters(t *testing.T) {
 		positionals,
 		false,
 		nil,
+		map[string]string{"args": "string", "term": "string"},
 	)
 
 	result, err := handler(context.Background(), mcplib.CallToolRequest{Params: mcplib.CallToolParams{
@@ -608,6 +773,7 @@ func TestShellOutBoundsFinalError(t *testing.T) {
 				nil,
 				false,
 				nil,
+				map[string]string{},
 			)
 
 			result, err := handler(context.Background(), mcplib.CallToolRequest{})

@@ -24,17 +24,23 @@ const (
 	defaultHTTPAddr = "127.0.0.1:7777"
 )
 
-func main() {
-	// Pin the learn-event surface for this process and every walker
-	// shell-out child, so usage events record surface=mcp.
-	_ = os.Setenv("PSE_EDGE_LEARN_SURFACE", "mcp")
+func newServer() *server.MCPServer {
 	s := server.NewMCPServer(
 		"Pse Edge",
 		cli.Version(),
 		server.WithToolCapabilities(false),
+		server.WithInputSchemaValidation(),
 	)
 
 	mcptools.RegisterTools(s)
+	return s
+}
+
+func main() {
+	// Pin the learn-event surface for this process and every walker
+	// shell-out child, so usage events record surface=mcp.
+	_ = os.Setenv("PSE_EDGE_LEARN_SURFACE", "mcp")
+	s := newServer()
 
 	transport := flag.String("transport", defaultTransport(), "MCP transport: stdio | http")
 	addr := flag.String("addr", defaultHTTPAddr, "bind address for http transport (default 127.0.0.1:7777 loopback-only; use host:port deliberately for LAN — no auth)")

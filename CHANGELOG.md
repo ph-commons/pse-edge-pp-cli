@@ -13,6 +13,8 @@ automation for this independent repo (that rule applies only when publishing
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-10-27
+
 ### Fixed
 
 - MCP tools reject arguments with the wrong declared type and prevent callers from selecting local file paths. File-dependent `filings day` and `import` remain available through the CLI. Store-writing tools no longer advertise read-only behavior.
@@ -138,7 +140,8 @@ automation for this independent repo (that rule applies only when publishing
 - Initial public release: agent-native PSE Edge CLI (quotes, filings, local
   history, MCP).
 
-[Unreleased]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.9...HEAD
+[Unreleased]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.10...HEAD
+[0.1.10]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.6...v0.1.7

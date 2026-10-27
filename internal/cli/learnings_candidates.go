@@ -131,7 +131,7 @@ alter command behavior or recall's verified results on their own.`,
 		Example: `  pse-edge-pp-cli learnings candidates
   pse-edge-pp-cli learnings candidates --class flag_alias
   pse-edge-pp-cli learnings candidates --status rejected`,
-		Annotations: map[string]string{"mcp:read-only": "true"},
+		Annotations: map[string]string{"mcp:local-write": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if dryRunOK(flags) {
 				return nil

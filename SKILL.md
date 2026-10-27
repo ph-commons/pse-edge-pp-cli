@@ -37,11 +37,11 @@ Missing or **stale** (release **v0.1.0**+):
 
 1. Prebuilt: `curl -fsSL https://raw.githubusercontent.com/ngpestelos/pse-edge-pp-cli/main/scripts/install.sh | bash`
 2. First-time fleet: `rebuild` (dotfiles `installPrebuiltCli` skips if binary already present)
-3. Else Go ≥1.26.6: `go install github.com/ph-commons/pse-edge-pp-cli/cmd/pse-edge-pp-cli@latest`
+3. Else Go ≥1.27.3: `go install github.com/ph-commons/pse-edge-pp-cli/cmd/pse-edge-pp-cli@latest`
 
 **Do not run skill commands until `--version` works.** Prefer release tarball (`0.1.0+`); bare `go install` may show module/VCS pseudo-version, not forever-`0.0.0-dev` after resolveVersion.
 
-MCP: `go install …/pse-edge-pp-mcp@latest` → `claude mcp add pse-edge-pp-mcp -- pse-edge-pp-mcp`. Relocate via host env `PSE_EDGE_HOME`.
+MCP: `go install …/pse-edge-pp-mcp@latest` → `claude mcp add pse-edge-pp-mcp -- pse-edge-pp-mcp`. Set `PSE_EDGE_HOME` in the host environment. MCP callers cannot select local paths; `filings day` and `import` remain CLI-only.
 
 ## Anti-triggers
 

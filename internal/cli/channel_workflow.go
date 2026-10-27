@@ -6,10 +6,11 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/ph-commons/pse-edge-pp-cli/internal/store"
+	"github.com/spf13/cobra"
 )
 
 func newWorkflowCmd(flags *rootFlags) *cobra.Command {
@@ -123,12 +124,26 @@ func newWorkflowStatusCmd(flags *rootFlags) *cobra.Command {
 			if dbPath == "" {
 				dbPath = defaultDBPath("pse-edge-pp-cli")
 			}
-			s, err := store.OpenWithContext(cmd.Context(), dbPath)
+			if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+				return fmt.Errorf("uninitialized store: run 'workflow archive' to create it")
+			} else if err != nil {
+				return fmt.Errorf("checking store: %w", err)
+			}
+			s, err := store.OpenReadOnlyContext(cmd.Context(), dbPath)
 			if err != nil {
 				return fmt.Errorf("opening store: %w", err)
 			}
 			defer s.Close()
-
+			version, err := s.SchemaVersion()
+			if err != nil {
+				return fmt.Errorf("reading store schema: %w", err)
+			}
+			if version < store.StoreSchemaVersion {
+				return fmt.Errorf("store migration required: schema version %d, expected %d", version, store.StoreSchemaVersion)
+			}
+			if version > store.StoreSchemaVersion {
+				return fmt.Errorf("store schema version %d is newer than supported version %d", version, store.StoreSchemaVersion)
+			}
 			status, err := s.Status()
 			if err != nil {
 				return err

@@ -34,7 +34,8 @@ but do not stop the import.`,
 
   # Import from stdin
   cat data.jsonl | pse-edge-pp-cli import <resource> --input -`,
-		Args: cobra.ExactArgs(1),
+		Args:        cobra.ExactArgs(1),
+		Annotations: map[string]string{"mcp:hidden": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			resource := args[0]
 			path, err := resourceWritePath(resource)

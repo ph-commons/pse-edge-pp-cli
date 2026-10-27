@@ -175,7 +175,7 @@ The manifest is written in every non-usage case that could create --out.
 This command does not publish to a vault and does not replace price exports.`,
 		Example: `  pse-edge-pp-cli filings day --date 20260924 --out ./disclosures-20260924 --json
   pse-edge-pp-cli filings day --symbol AT --symbol GTCAP --out ./today --json`,
-		Annotations: map[string]string{"mcp:read-only": "true"},
+		Annotations: map[string]string{"mcp:hidden": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 0 {
 				return usageErr(fmt.Errorf("filings day takes flags, not positional args"))

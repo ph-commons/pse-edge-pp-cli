@@ -124,6 +124,31 @@ func TestMCPRegisterToolsPreservesTypedSpecialTools(t *testing.T) {
 	}
 }
 
+func TestMCPHidesCommandsRequiringCallerFiles(t *testing.T) {
+	s := server.NewMCPServer("pse-edge", "test")
+	RegisterTools(s)
+	for _, name := range []string{"filings_day", "import"} {
+		if s.GetTool(name) != nil {
+			t.Errorf("file-dependent tool %q must not be exposed", name)
+		}
+	}
+}
+
+func TestMCPStoreWritersAreNotMarkedReadOnly(t *testing.T) {
+	s := server.NewMCPServer("pse-edge", "test")
+	RegisterTools(s)
+	for _, name := range []string{"sync_market", "filings", "recall", "learnings_list", "learnings_candidates", "learnings_stats", "playbook_list"} {
+		tool := s.GetTool(name)
+		if tool == nil {
+			t.Errorf("tool %q is missing", name)
+			continue
+		}
+		if hint := tool.Tool.Annotations.ReadOnlyHint; hint != nil && *hint {
+			t.Errorf("store-writing tool %q is marked read-only", name)
+		}
+	}
+}
+
 func TestMCPSearchMissingStoreIsActionable(t *testing.T) {
 	resetMCPPathEnv(t)
 

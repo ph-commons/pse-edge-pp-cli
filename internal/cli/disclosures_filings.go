@@ -138,7 +138,6 @@ offline joins (the 'deadlines' command reads it).`,
   pse-edge-pp-cli filings --all --limit 50 --json
   pse-edge-pp-cli filings get --edge-no 2bc053ab3b1339fb64d70b69f0a3140b --json
   pse-edge-pp-cli filings latest-body GTCAP --json`,
-		Annotations: map[string]string{"mcp:read-only": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 && !allCompanies {
 				return cmd.Help()

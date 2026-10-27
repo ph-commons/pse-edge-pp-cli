@@ -125,25 +125,30 @@ if [ "$install_ok" != true ]; then
     die "PSE_EDGE_REQUIRE_COSIGN=1 but the signed prebuilt release could not be installed — refusing to fall back to go install (different trust root)"
   fi
   if ! command -v go >/dev/null 2>&1; then
-    die "go not on PATH. Install Go 1.21+ (https://go.dev/dl/) or download a release tarball manually."
+    die "go not on PATH. Install Go 1.27.3+ (https://go.dev/dl/) or download a release tarball manually."
   fi
+  fallback_tmp="$(mktemp -d "${TMPDIR:-/tmp}/pse-edge-install.XXXXXX")"
+  fallback_log="$fallback_tmp/diagnostic.log"
+  trap 'rm -f "$fallback_log"; rmdir "$fallback_tmp" 2>/dev/null || true' EXIT
   log "Building from source via go install (modernc.org/sqlite may be CPU-heavy)…"
   # Retry a few times for sum.golang.org flakes.
   for attempt in 1 2 3; do
-    if GOTOOLCHAIN=auto GOBIN="$GOBIN_DIR" go install "${MODULE}/cmd/${BIN}@latest" 2>/tmp/pse-edge-install.err \
-      && GOTOOLCHAIN=auto GOBIN="$GOBIN_DIR" go install "${MODULE}/cmd/pse-edge-pp-mcp@latest" 2>>/tmp/pse-edge-install.err; then
+    if GOTOOLCHAIN=auto GOBIN="$GOBIN_DIR" go install "${MODULE}/cmd/${BIN}@latest" 2>"$fallback_log" \
+      && GOTOOLCHAIN=auto GOBIN="$GOBIN_DIR" go install "${MODULE}/cmd/pse-edge-pp-mcp@latest" 2>>"$fallback_log"; then
       install_ok=true
       break
     fi
-    if grep -q "sum.golang.org" /tmp/pse-edge-install.err 2>/dev/null && [ "$attempt" -lt 3 ]; then
+    if grep -q "sum.golang.org" "$fallback_log" 2>/dev/null && [ "$attempt" -lt 3 ]; then
       warn "sum.golang.org flake (attempt $attempt/3); retrying in 10s"
       sleep 10
     else
-      cat /tmp/pse-edge-install.err >&2
+      cat "$fallback_log" >&2
       break
     fi
   done
-  rm -f /tmp/pse-edge-install.err
+  rm -f "$fallback_log"
+  rmdir "$fallback_tmp"
+  trap - EXIT
 fi
 
 [ "$install_ok" = true ] || die "install failed (neither prebuilt download nor go install worked)."

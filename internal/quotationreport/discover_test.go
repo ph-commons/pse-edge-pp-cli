@@ -9,12 +9,77 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
 	"testing"
 	"time"
 )
+
+type testRoundTripper func(*http.Request) (*http.Response, error)
+
+func (f testRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestLoadPostsRestrictsAJAXOrigin(t *testing.T) {
+	listing, err := url.Parse("https://www.pse.com.ph/market-report/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, ajax string
+		wantURL    string
+		allowed    bool
+	}{
+		{"relative", "/ajax", "https://www.pse.com.ph/ajax", true},
+		{"default port", "https://www.pse.com.ph:443/ajax", "https://www.pse.com.ph:443/ajax", true},
+		{"cross origin", "https://documents.pse.com.ph/ajax", "", false},
+		{"port change", "https://www.pse.com.ph:444/ajax", "", false},
+		{"scheme change", "http://www.pse.com.ph/ajax", "", false},
+		{"private host", "http://127.0.0.1/ajax", "", false},
+		{"userinfo", "https://user@www.pse.com.ph/ajax", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hits := 0
+			client := &http.Client{Transport: testRoundTripper(func(req *http.Request) (*http.Response, error) {
+				hits++
+				if tc.allowed && req.URL.String() != tc.wantURL {
+					t.Errorf("request URL = %q, want %q", req.URL, tc.wantURL)
+				}
+				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"data":[]}`)), Header: make(http.Header), Request: req}, nil
+			})}
+			_, err := loadPosts(context.Background(), client, listing, tc.ajax, "nonce", "action", "table", 0)
+			if tc.allowed && (err != nil || hits != 1) {
+				t.Fatalf("allowed request: hits=%d error=%v", hits, err)
+			}
+			if !tc.allowed && (err == nil || hits != 0) {
+				t.Fatalf("disallowed request: hits=%d error=%v", hits, err)
+			}
+		})
+	}
+}
+
+func TestLoadPostsRejectsCrossOriginRedirectBeforeRequest(t *testing.T) {
+	listing, err := url.Parse("https://www.pse.com.ph/market-report/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	redirected := false
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error { return allowReportURL(req.URL, listing) },
+		Transport: testRoundTripper(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Hostname() == "documents.pse.com.ph" {
+				redirected = true
+				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"data":[]}`)), Header: make(http.Header), Request: req}, nil
+			}
+			return &http.Response{StatusCode: http.StatusFound, Body: io.NopCloser(strings.NewReader("")), Header: http.Header{"Location": []string{"https://documents.pse.com.ph/ajax"}}, Request: req}, nil
+		}),
+	}
+	_, err = loadPosts(context.Background(), client, listing, "/ajax", "nonce", "action", "table", 0)
+	if err == nil || redirected {
+		t.Fatalf("cross-origin redirect: requested=%t error=%v", redirected, err)
+	}
+}
 
 func TestFindReportUsesPageTokens(t *testing.T) {
 	session := time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC)

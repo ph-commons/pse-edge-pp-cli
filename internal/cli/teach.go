@@ -469,7 +469,7 @@ Disabling: ` + noLearnEnvVar + `=true returns the empty shape even
 when learnings exist.`,
 		Example: `  pse-edge-pp-cli recall "<question>" --agent
   pse-edge-pp-cli recall "<question>" --agent --min-confidence 2`,
-		Annotations: map[string]string{"mcp:read-only": "true"},
+		Annotations: map[string]string{"mcp:local-write": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return cmd.Help()
@@ -695,7 +695,7 @@ func newLearningsListCmd(flags *rootFlags) *cobra.Command {
 		Example: `  pse-edge-pp-cli learnings list --agent
   pse-edge-pp-cli learnings list --query "<substring>"
   pse-edge-pp-cli learnings list --warnings --agent`,
-		Annotations: map[string]string{"mcp:read-only": "true"},
+		Annotations: map[string]string{"mcp:local-write": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if dryRunOK(flags) {
 				return nil

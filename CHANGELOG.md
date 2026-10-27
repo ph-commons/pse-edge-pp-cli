@@ -13,6 +13,8 @@ automation for this independent repo (that rule applies only when publishing
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-10-28
+
 ### Fixed
 
 - Update `golang.org/x/net` from 0.61.0 to 0.62.0 to address GO-2026-6860.
@@ -152,7 +154,8 @@ automation for this independent repo (that rule applies only when publishing
 - Initial public release: agent-native PSE Edge CLI (quotes, filings, local
   history, MCP).
 
-[Unreleased]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.11...HEAD
+[Unreleased]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.12...HEAD
+[0.1.12]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.11...v0.1.12
 [0.1.11]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.8...v0.1.9

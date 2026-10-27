@@ -13,6 +13,14 @@ automation for this independent repo (that rule applies only when publishing
 
 ## [Unreleased]
 
+## [0.1.11] - 2026-10-27
+
+### Changed
+
+- Bump `golang.org/x/net` 0.60.0 → 0.61.0 ([#69](https://github.com/ph-commons/pse-edge-pp-cli/pull/69)).
+- Bump `github.com/mark3labs/mcp-go` 1.1.1 → 1.4.0 ([#71](https://github.com/ph-commons/pse-edge-pp-cli/pull/71)).
+- Bump `modernc.org/sqlite` 1.59.0 → 1.61.0 ([#72](https://github.com/ph-commons/pse-edge-pp-cli/pull/72)).
+
 ## [0.1.10] - 2026-10-27
 
 ### Fixed
@@ -140,7 +148,8 @@ automation for this independent repo (that rule applies only when publishing
 - Initial public release: agent-native PSE Edge CLI (quotes, filings, local
   history, MCP).
 
-[Unreleased]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.10...HEAD
+[Unreleased]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.11...HEAD
+[0.1.11]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/ph-commons/pse-edge-pp-cli/compare/v0.1.7...v0.1.8

@@ -13,6 +13,10 @@ automation for this independent repo (that rule applies only when publishing
 
 ## [Unreleased]
 
+### Fixed
+
+- Update `golang.org/x/net` from 0.61.0 to 0.62.0 to address GO-2026-6860.
+
 ## [0.1.11] - 2026-10-27
 
 ### Changed

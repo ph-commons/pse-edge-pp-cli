@@ -125,7 +125,7 @@ if [ "$install_ok" != true ]; then
     die "PSE_EDGE_REQUIRE_COSIGN=1 but the signed prebuilt release could not be installed — refusing to fall back to go install (different trust root)"
   fi
   if ! command -v go >/dev/null 2>&1; then
-    die "go not on PATH. Install Go 1.27.3+ (https://go.dev/dl/) or download a release tarball manually."
+    die "go not on PATH. Install Go 1.27.4+ (https://go.dev/dl/) or download a release tarball manually."
   fi
   fallback_tmp="$(mktemp -d "${TMPDIR:-/tmp}/pse-edge-install.XXXXXX")"
   fallback_log="$fallback_tmp/diagnostic.log"

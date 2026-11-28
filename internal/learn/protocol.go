@@ -3,14 +3,9 @@
 
 package learn
 
-// RecallFirstProtocol is the recall-first agent protocol for this CLI's
-// learn loop. Mechanism: a single generated Go constant is the shared
-// source of truth consumed by BOTH agent surfaces, the MCP context tool
-// (handleContext in internal/mcp) and the CLI agent-context command
-// (internal/cli), so the two surfaces reference one constant instead of
-// carrying parallel prose that could drift.
-const RecallFirstProtocol = `1. Recall first: before answering a domain query, run recall "<question>" --agent and apply any verified learnings, playbook steps, and notes it returns.
-2. Empty-store short-circuit: if the store has no learnings, playbooks, or candidates yet (recall finds nothing and learnings list and learnings candidates are both empty), skip recall for the rest of this session instead of taxing every query; resume recall-first once something has been taught.
-3. Candidates are try-then-confirm, never facts: entries in the recall envelope's candidates section are unverified. Follow each candidate's two-step next_action verbatim: run the trial command first, then run learnings confirm <id> only after the trial verified the behavior. Reject a wrong candidate with learnings reject <id>.
-4. Teach contract: after resolving a query the store could not answer, teach the structural query shape with identifiers stripped: never include names, emails, phone numbers, account ids, or other personal identifiers in taught queries or notes.
-5. Never re-teach what recall already surfaced as a candidate: confirm or reject that candidate instead of teaching a duplicate.`
+// RecallFirstProtocol carries the optional local-learning guidance shared by
+// the CLI agent-context command and the MCP context tool. The exported name is
+// retained for compatibility; routine queries no longer require recall first.
+const RecallFirstProtocol = `Local learning is optional. For routine agent use, set PSE_EDGE_NO_LEARN=true before invoking the CLI, or in the MCP server environment; --no-learn is the per-command alternative. Without this switch, automatic learning capture remains enabled. Market-data storage is unaffected.
+Use local recall, teach, playbooks and candidate updates only when explicitly requested and permitted by the workspace's memory policy. Follow its designated memory owner. Do not run recall-first or background teaching for routine queries. Preserve existing learning data.
+When authorized, read warnings and treat candidates as unverified. Check a proposed trial is in scope, verify its result, then confirm or reject it; do not teach a duplicate candidate. Strip names, emails, phone numbers and account IDs from queries and notes. Fetch current data rather than treating remembered mappings as current market evidence.`

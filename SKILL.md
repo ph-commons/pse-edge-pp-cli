@@ -1,7 +1,7 @@
 ---
 name: pp-pse-edge
 description: "Agent-native Philippine Stock Exchange CLI — quotes, filings, and a local price history no free API serves. Trigger phrases: `quote AT`, `how is the PSEi doing`, `PSE market breadth`, `check PSE disclosures for GTCAP`, `has the 17-Q been filed`, `PSE movers this week`, `use pse-edge`, `run pse-edge`."
-version: "1.3.0"
+version: "1.3.1"
 author: "Nestor G Pestelos Jr"
 license: "Apache-2.0"
 argument-hint: "<command> [args] | install cli|mcp"
@@ -25,6 +25,13 @@ metadata:
 Structured JSON over PSE EDGE + compositeSector + Phisix convenience + local SQLite history. **No auth.** Read-only markets.
 
 Public repo: https://github.com/ph-commons/pse-edge-pp-cli
+
+## Before running commands
+
+For routine agent use, set `PSE_EDGE_NO_LEARN=true` in the command environment
+before invoking the CLI. For MCP, set it in the server environment. This disables
+local learning while preserving market-data storage. Without it, automatic
+learning capture remains enabled. See [Optional local learning](#optional-local-learning).
 
 ## Install / verify
 
@@ -130,27 +137,18 @@ Generated resource commands wrap `{meta, results}`; novel local-store commands (
 - MCP: set `PSE_EDGE_HOME` in host env (MCP does not inherit CLI flags).
 - Relocation is not reversible by unsetting env alone — move files first.
 
-## Learning loop (judgment only)
+## Optional local learning
 
-CLI journals invocations and derives candidates; agent does **not** hand-record failures.
+Use local recall, teach, playbooks and candidate updates only when explicitly
+requested and permitted by the workspace's memory policy. Follow its designated
+memory owner. Do not run recall-first or background teaching for routine market
+queries. Preserve existing learning data; `--no-learn` is the per-command
+alternative to `PSE_EDGE_NO_LEARN=true`.
 
-1. **`recall` first** on a new question (skip for rest of session if store is fully cold).
-2. Decision order: candidates → playbook/notes → exact resource hit → cold start.
-3. Always read `warnings`.
-4. After answering: `teach &` (background) with structural query, no PII.
-5. Optional: playbook flags on `teach`, or `playbook amend &` for observed gotchas only.
-
-```
-if Candidates present (warnings include "candidates_present"):
-    -> candidates are try-then-confirm, never facts. Follow each candidate's
-       two-step next_action verbatim: run the trial command first, then run
-       `learnings confirm <id>` only after the trial verified the behavior.
-       Reject a wrong candidate with `learnings reject <id>`.
-    -> NEVER re-teach something recall surfaced as a candidate; confirm or
-       reject that candidate instead of teaching a duplicate.
-```
-
-Disable: `--no-learn` or `PSE_EDGE_NO_LEARN=true`.
+When authorized, read warnings and treat candidates as unverified. Check each
+trial is in scope, verify its result, then confirm or reject it. Do not teach a
+duplicate candidate. Strip personal identifiers from taught queries and notes,
+and fetch current market data rather than reusing remembered values.
 
 ## Exit codes
 

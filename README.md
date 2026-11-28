@@ -75,6 +75,9 @@ Manual Claude Desktop config (`~/Library/Application Support/Claude/claude_deskt
 ## Quick Start
 
 ```bash
+# Routine agent use: disable local learning; market-data storage is unaffected
+export PSE_EDGE_NO_LEARN=true
+
 # Health check — verifies both upstreams are reachable; no auth exists anywhere
 pse-edge-pp-cli doctor --dry-run
 
@@ -390,10 +393,15 @@ Fast EOD quotes via the community phisix JSON mirror (unofficial redeploy — ma
 
 ### Self-learning loop
 
-This CLI caches per-question discovery so repeat queries skip the walk and structurally similar queries get answered via entity substitution. The loop also self-captures: every invocation is journaled locally, and failed-flag corrections plus fresh teaches surface as candidates on the next `recall` for confirm/reject judgment. Agents call `recall` before discovery and fire `teach &` after answering. See the `## Automatic learning` section in `SKILL.md` for the full protocol.
+Local learning is optional for agents. For routine use, set `PSE_EDGE_NO_LEARN=true`
+in the command environment, or in the MCP server environment. Without this switch,
+the CLI journals invocations and derives learning candidates automatically.
+Use recall, teaching and candidate updates only when explicitly requested and
+permitted by the workspace's memory policy. Do not teach in the background after
+routine queries. See [Optional local learning](SKILL.md#optional-local-learning).
 
 - **`pse-edge-pp-cli recall <query>`** - Look up cached resources for a query before running discovery
-- **`pse-edge-pp-cli teach`** - Record a query -> resource mapping (silent on success, safe to background with `&`)
+- **`pse-edge-pp-cli teach`** - Record an explicitly authorized query -> resource mapping (silent on success)
 - **`pse-edge-pp-cli learnings list`** - Inspect taught rows
 - **`pse-edge-pp-cli learnings forget <query>`** - Undo a teach
 - **`pse-edge-pp-cli learnings candidates`** - List auto-captured candidates awaiting confirm/reject

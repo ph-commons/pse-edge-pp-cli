@@ -13,6 +13,10 @@ automation for this independent repo (that rule applies only when publishing
 
 ## [Unreleased]
 
+### Fixed
+
+- Agent docs and CLI/MCP context now make local learning conditional on an explicit request and workspace policy. Routine agent guidance uses the existing no-learn switch instead of requiring recall and background teaching; learning commands and existing data are preserved.
+
 ## [0.1.12] - 2026-10-28
 
 ### Fixed

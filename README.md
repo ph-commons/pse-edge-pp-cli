@@ -10,7 +10,7 @@ Created by [Nestor G Pestelos Jr](https://npestelos.com).
 
 ## Install
 
-Requires [Go 1.27.3 or newer](https://go.dev/dl/):
+Requires [Go 1.27.4 or newer](https://go.dev/dl/):
 
 ```bash
 go install github.com/ph-commons/pse-edge-pp-cli/cmd/pse-edge-pp-cli@latest

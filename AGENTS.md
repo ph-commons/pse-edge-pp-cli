@@ -4,9 +4,11 @@ This directory is a generated `pse-edge-pp-cli` printed CLI. It was produced by 
 
 ## Local Operating Contract
 
-Start by asking the generated CLI for current runtime truth:
+For routine agent use, disable local learning before the first invocation, then
+ask the generated CLI for current runtime truth:
 
 ```bash
+export PSE_EDGE_NO_LEARN=true
 pse-edge-pp-cli doctor --json
 pse-edge-pp-cli agent-context --pretty
 ```
@@ -33,25 +35,25 @@ pse-edge-pp-cli <command> --dry-run --agent
 
 Use `--yes --no-input` only after the target, arguments, and side effects are clear.
 
-## Self-Learning Loop
+## Optional local learning
 
-This CLI ships a self-capturing teach/recall loop backed by the local SQLite store. The CLI journals every invocation, derives `flag_alias` candidates from failed-flag + corrected-retry pairs, and synthesizes a playbook candidate when a family is taught without one - no manual failure bookkeeping. The agent's role is judgment:
+For MCP, set `PSE_EDGE_NO_LEARN=true` in the server's environment. The per-command
+alternative is `--no-learn`. These switches disable learning, not market-data
+storage. Without them the CLI still captures learning state automatically.
 
-1. On a new user question, call `pse-edge-pp-cli recall "<question>" --agent` FIRST. If `found=true` and the top result has `entity_match == "exact"` and `confidence >= 2`, skip discovery and go straight to the live fetch for the returned resource IDs. If the store is cold (recall finds nothing and `learnings list` and `learnings candidates` are both empty), skip recall for the rest of the session.
-2. When the envelope carries a `candidates` section (warning `candidates_present`), candidates are try-then-confirm, never facts: follow each candidate's two-step `next_action` verbatim (trial command first, then `learnings confirm <id>` only after the trial verified the behavior), and reject wrong ones with `learnings reject <id>`. Never re-teach something recall surfaced as a candidate; confirm or reject it instead.
-3. After answering, always fire `pse-edge-pp-cli teach --query "<question>" --resource <id> --resource-type <type> &` in the background - teaching is unconditional and is the anchor that triggers playbook synthesis. Teach the structural question with identifiers stripped (no names, emails, phone numbers, account ids); the CLI warns on obvious PII shapes but does not block.
-4. Use `learnings list` to inspect taught rows, `learnings forget "<question>"` to undo a bad teach, `learnings candidates` for the full open candidate set, and `learnings stats` for the loop's local metrics. `teach-pattern` and `teach-lookup` install manual generalization rules when one teach should cover a whole family (e.g. one country alias unlocks every per-country query).
-5. If `learnings confirm` is an unknown command, you are driving an older binary - ignore the candidates guidance and keep the rest of the flow.
+Use local recall, teach, playbooks and candidate updates only when explicitly
+requested and permitted by the workspace's memory policy. Follow its designated
+memory owner; CLI guidance grants no memory-write authority. Do not teach in the
+background after routine queries. Preserve existing learning data.
 
-Annotations: `recall`, `learnings list`, `learnings candidates`, `learnings stats`, `teach`, `teach-playbook`, `playbook amend`, `learnings confirm`, `teach-pattern`, and `teach-lookup` carry `mcp:local-write=true` (writes land only in the CLI's own local store); `learnings forget` and `learnings reject` keep honest may-write/destructive defaults.
+When local learning is authorized, candidates remain unverified: check a proposed
+trial is in scope, verify its result, then confirm or reject it. Do not teach a
+duplicate candidate. Strip names, emails, phone numbers and account IDs from
+queries and notes. Read warnings and fetch current data rather than treating a
+remembered mapping as current market evidence.
 
-### Success definition
-
-Measurement is local-only: the `learn_events` table and `learnings stats`; nothing leaves this machine. Judge the loop on recall hit rate and teach-to-reuse at a minimum denominator of 50+ recall events. Near-zero rates at that denominator mean the loop is not earning its keep for this CLI - surface that in retros. An empty or thin events table means insufficient adoption, not failure.
-
-The store's schema stamp is one-way: once this binary opens the database, an older binary refuses it (README.md carries the upgrade note).
-
-Disable the loop with `--no-learn` per-invocation or `PSE_EDGE_NO_LEARN=true` for the whole session - useful for deterministic agent flows that don't want a learning row to silently change subsequent query results.
+The store's schema stamp is one-way: opening it with a newer binary can prevent
+older binaries from using it. See the README upgrade note.
 
 For install, examples, and longer product guidance, read `README.md` and `SKILL.md`. This file intentionally stays small so repo-local agents get invariant local guidance without duplicating the generated docs.
 

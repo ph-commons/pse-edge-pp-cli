@@ -1,0 +1,17 @@
+{
+  "schema_version": 2,
+  "id": "patched-go-toolchain",
+  "applied_at": "20261128",
+  "base_run_id": "20260727-155656-a8a699bf",
+  "base_printing_press_version": "4.29.0",
+  "summary": "Module, CI, release builds, artifact verification and install requirements must agree on a Go patch version without reachable standard-library vulnerabilities.",
+  "reason": "Dependency-only updates cannot repair vulnerabilities in the compiler standard library used to build this CLI and MCP server. Preserve a consistent patched toolchain without weakening vulnerability or release-integrity gates.",
+  "files": [
+    "go.mod",
+    ".github/workflows/ci.yml",
+    ".github/workflows/release.yml",
+    "README.md",
+    "SKILL.md",
+    "scripts/install.sh"
+  ]
+}

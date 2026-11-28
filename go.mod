@@ -1,6 +1,6 @@
 module github.com/ph-commons/pse-edge-pp-cli
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/mark3labs/mcp-go v1.6.0

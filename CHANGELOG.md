@@ -13,6 +13,10 @@ automation for this independent repo (that rule applies only when publishing
 
 ## [Unreleased]
 
+### Fixed
+
+- Require Go 1.27.4 for builds and releases to address GO-2026-6859 in the standard library; align CI, release verification and install requirements.
+
 ## [0.1.12] - 2026-10-28
 
 ### Fixed

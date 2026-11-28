@@ -15,6 +15,7 @@ automation for this independent repo (that rule applies only when publishing
 
 ### Fixed
 
+- Agent docs and CLI/MCP context now make local learning conditional on an explicit request and workspace policy. Routine agent guidance uses the existing no-learn switch instead of requiring recall and background teaching; learning commands and existing data are preserved.
 - Require Go 1.27.4 for builds and releases to address GO-2026-6859 in the standard library; align CI, release verification and install requirements.
 
 ## [0.1.12] - 2026-10-28
